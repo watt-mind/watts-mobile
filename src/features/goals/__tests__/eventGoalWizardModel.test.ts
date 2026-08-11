@@ -97,4 +97,73 @@ describe('eventGoalWizard', () => {
     expect(toggleEventId(['a'], 'b')).toEqual(['a', 'b']);
     expect(toggleEventId(['a', 'b'], 'a')).toEqual(['b']);
   });
+
+  // CW-557: the wizard validates before it builds (EventGoalWizard.onSubmit), so a
+  // comma decimal from a decimal-pad keyboard used to be rejected outright with
+  // "Target value must be a number." — the athlete typed a valid number for their locale.
+  describe('locale decimals (CW-557)', () => {
+    function bodyCompForm(startValue: string, targetValue: string) {
+      const form = emptyEventGoalWizardForm('BODY_COMPOSITION');
+      form.title = 'Race weight';
+      form.targetDate = '2026-12-01';
+      form.startValue = startValue;
+      form.targetValue = targetValue;
+      return form;
+    }
+
+    it('accepts a comma decimal target and carries it through to the payload', () => {
+      const form = bodyCompForm('78,25', '72,5');
+      expect(validateEventGoalWizardForm(form)).toBeNull();
+      const input = buildEventGoalWizardInput(form);
+      expect(input.startValue).toBe(78.25);
+      expect(input.targetValue).toBe(72.5);
+    });
+
+    it('accepts grouped input for PERFORMANCE start/target values', () => {
+      const form = emptyEventGoalWizardForm('PERFORMANCE');
+      form.title = 'Raise FTP';
+      form.targetDate = '2026-12-01';
+      form.startValue = '1 234,5';
+      form.targetValue = '1.234,56';
+      expect(validateEventGoalWizardForm(form)).toBeNull();
+      const input = buildEventGoalWizardInput(form);
+      expect(input.startValue).toBe(1234.5);
+      expect(input.targetValue).toBe(1234.56);
+    });
+
+    it('accepts a comma decimal CONSISTENCY target', () => {
+      const form = emptyEventGoalWizardForm('CONSISTENCY');
+      form.title = 'Weekly hours';
+      form.targetDate = '2026-12-01';
+      form.targetValue = '8,5';
+      expect(validateEventGoalWizardForm(form)).toBeNull();
+      expect(buildEventGoalWizardInput(form).targetValue).toBe(8.5);
+    });
+
+    it('still rejects genuinely unparseable values with the existing messages', () => {
+      expect(validateEventGoalWizardForm(bodyCompForm('78', 'abc'))).toBe(
+        'Target value must be a number.',
+      );
+      expect(validateEventGoalWizardForm(bodyCompForm('abc', '72'))).toBe(
+        'Start value must be a number.',
+      );
+      expect(validateEventGoalWizardForm(bodyCompForm('1,2,3', '72'))).toBe(
+        'Start value must be a number.',
+      );
+    });
+
+    it('treats blank values as absent rather than invalid', () => {
+      const form = bodyCompForm('', '   ');
+      expect(validateEventGoalWizardForm(form)).toBeNull();
+      const input = buildEventGoalWizardInput(form);
+      expect(input.startValue).toBeUndefined();
+      expect(input.targetValue).toBeUndefined();
+    });
+
+    it('omits an unparseable value from the payload instead of sending NaN', () => {
+      const input = buildEventGoalWizardInput(bodyCompForm('abc', 'abc'));
+      expect(input.startValue).toBeUndefined();
+      expect(input.targetValue).toBeUndefined();
+    });
+  });
 });
