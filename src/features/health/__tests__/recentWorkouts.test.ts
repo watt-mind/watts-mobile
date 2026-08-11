@@ -1,122 +1,182 @@
-import { describe, expect, it } from 'vitest';
+/* eslint-disable import/first -- vi.mock factories must be declared before the modules under test are imported. */
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+import type { PlatformWorkoutSession, RemoteWorkoutMatchCandidate, SyncLedgerItem } from '../types';
+
+/**
+ * The three pure helpers (`resolveRecentWorkoutStatus`, `buildRecentWorkoutRows`,
+ * `isUnsyncedRecentStatus`) live in `recentWorkoutRows.ts` and are asserted on
+ * only in `recentWorkoutRows.test.ts` (CW-521). This suite covers what is unique
+ * to `recentWorkouts.ts`: the two IO wrappers and how they feed those helpers.
+ * `recentWorkoutRows` is deliberately left un-mocked so the rows below are the
+ * real thing — that is what makes the remote-failure fallback observable.
+ */
+
+const readPlatformWorkouts = vi.fn(async (_opts: { lookbackDays: number }) => [...deviceSessions]);
+vi.mock('../readers', () => ({
+  readPlatformWorkouts: (...args: Parameters<typeof readPlatformWorkouts>) =>
+    readPlatformWorkouts(...args),
+}));
+
+const loadSyncLedger = vi.fn(async () => [...ledgerItems]);
+vi.mock('../ledger', () => ({
+  loadSyncLedger: (...args: Parameters<typeof loadSyncLedger>) => loadSyncLedger(...args),
+}));
+
+const fetchRemoteWorkoutsForMatch = vi.fn(async (_lookbackDays: number) => [...remotes]);
+vi.mock('../fetchRemoteWorkouts', () => ({
+  fetchRemoteWorkoutsForMatch: (...args: Parameters<typeof fetchRemoteWorkoutsForMatch>) =>
+    fetchRemoteWorkoutsForMatch(...args),
+}));
 
 import {
-  buildRecentWorkoutRows,
-  isUnsyncedRecentStatus,
-  resolveRecentWorkoutStatus,
-} from '../recentWorkoutRows';
-import type { PlatformWorkoutSession, SyncLedgerItem } from '../types';
+  findPlatformWorkoutSession,
+  listRecentPlatformWorkoutsWithStatus,
+} from '../recentWorkouts';
+import { LOOKBACK_DAYS } from '../types';
 
-function session(
-  partial: Partial<PlatformWorkoutSession> & Pick<PlatformWorkoutSession, 'platformSessionId'>,
-): PlatformWorkoutSession {
-  return {
-    platform: 'healthkit',
-    startedAt: '2026-07-20T08:00:00.000Z',
-    durationSec: 3600,
-    sportType: 'running',
-    title: 'Morning run',
-    ...partial,
-  };
-}
+const sampleSession: PlatformWorkoutSession = {
+  platformSessionId: 'sess-123',
+  platform: 'healthkit',
+  sportType: 'cycling',
+  startedAt: '2026-07-26T10:00:00Z',
+  durationSec: 3600,
+  distanceMeters: 30000,
+};
 
-function ledger(
-  partial: Partial<SyncLedgerItem> & Pick<SyncLedgerItem, 'id' | 'status'>,
-): SyncLedgerItem {
-  return {
-    kind: 'workout',
-    platform: 'healthkit',
-    title: 'Workout',
-    attemptCount: 0,
-    ...partial,
-  };
-}
+const olderSession: PlatformWorkoutSession = {
+  platformSessionId: 'sess-100',
+  platform: 'healthkit',
+  sportType: 'running',
+  startedAt: '2026-07-25T08:00:00Z',
+  durationSec: 1800,
+};
 
-describe('resolveRecentWorkoutStatus', () => {
-  it('marks on-device-only workouts as needs_sync', () => {
-    expect(resolveRecentWorkoutStatus(session({ platformSessionId: 'a' }), undefined, [])).toBe(
-      'needs_sync',
-    );
-  });
+/** Matches `sampleSession` on start time, duration and sport. */
+const sampleRemote: RemoteWorkoutMatchCandidate = {
+  id: 'remote-789',
+  date: '2026-07-26T10:00:00Z',
+  durationSec: 3600,
+  type: 'cycling',
+};
 
-  it('marks remote match as synced even without ledger', () => {
-    const status = resolveRecentWorkoutStatus(session({ platformSessionId: 'a' }), undefined, [
+let deviceSessions: PlatformWorkoutSession[] = [];
+let ledgerItems: SyncLedgerItem[] = [];
+let remotes: RemoteWorkoutMatchCandidate[] = [];
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  deviceSessions = [sampleSession];
+  ledgerItems = [];
+  remotes = [];
+  fetchRemoteWorkoutsForMatch.mockImplementation(async () => [...remotes]);
+});
+
+describe('listRecentPlatformWorkoutsWithStatus', () => {
+  it('overlays the ledger and the remote match onto the device sessions, newest first', async () => {
+    deviceSessions = [olderSession, sampleSession];
+    remotes = [sampleRemote];
+    ledgerItems = [
       {
-        id: 'remote-1',
-        date: '2026-07-20T08:02:00.000Z',
-        type: 'run',
-        durationSec: 3500,
-      },
-    ]);
-    expect(status).toBe('synced');
-  });
-
-  it('prefers ledger synced', () => {
-    const status = resolveRecentWorkoutStatus(
-      session({ platformSessionId: 'a' }),
-      ledger({
-        id: 'workout:a',
+        id: 'workout:sess-123',
+        kind: 'workout',
+        platform: 'healthkit',
+        title: 'Cycling',
         status: 'synced',
-        remoteWorkoutId: 'cw-1',
-      }),
-      [],
-    );
-    expect(status).toBe('synced');
+        remoteWorkoutId: 'remote-789',
+        attemptCount: 1,
+      },
+    ];
+
+    const rows = await listRecentPlatformWorkoutsWithStatus();
+
+    expect(rows.map((r) => r.platformSessionId)).toEqual(['sess-123', 'sess-100']);
+    expect(rows[0]?.status).toBe('synced');
+    expect(rows[0]?.remoteWorkoutId).toBe('remote-789');
+    expect(rows[1]?.status).toBe('needs_sync');
   });
 
-  it('surfaces failed ledger when unmatched', () => {
-    const status = resolveRecentWorkoutStatus(
-      session({ platformSessionId: 'a' }),
-      ledger({ id: 'workout:a', status: 'failed', lastError: 'Upload failed' }),
-      [],
-    );
-    expect(status).toBe('failed');
+  it('reads the default lookback window, and an explicit one when given', async () => {
+    await listRecentPlatformWorkoutsWithStatus();
+    expect(readPlatformWorkouts).toHaveBeenCalledWith({ lookbackDays: LOOKBACK_DAYS });
+    expect(fetchRemoteWorkoutsForMatch).toHaveBeenCalledWith(LOOKBACK_DAYS);
+
+    await listRecentPlatformWorkoutsWithStatus(3);
+    expect(readPlatformWorkouts).toHaveBeenLastCalledWith({ lookbackDays: 3 });
+    expect(fetchRemoteWorkoutsForMatch).toHaveBeenLastCalledWith(3);
   });
 
-  it('keeps syncing while an attempt is in flight', () => {
-    const status = resolveRecentWorkoutStatus(
-      session({ platformSessionId: 'a' }),
-      // An attempt is only believed to be in flight while it is recent (CW-352).
-      ledger({
-        id: 'workout:a',
-        status: 'syncing',
-        lastAttemptAt: new Date(Date.now() - 60 * 1000).toISOString(),
-      }),
-      [],
-    );
-    expect(status).toBe('syncing');
-  });
-});
+  it('still builds rows when the remote match fails, falling back to an empty remote list', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    // Control: with the remote reachable this exact session resolves to `synced`
+    // purely via the match, so the fallback below is the only thing that can
+    // change the outcome. If the try/catch in recentWorkouts.ts is removed, this
+    // call rejects and the test fails rather than reporting `needs_sync`.
+    remotes = [sampleRemote];
+    const [matched] = await listRecentPlatformWorkoutsWithStatus();
+    expect(matched?.status).toBe('synced');
 
-describe('buildRecentWorkoutRows', () => {
-  it('sorts newest first and overlays status', () => {
-    const rows = buildRecentWorkoutRows(
-      [
-        session({ platformSessionId: 'old', startedAt: '2026-07-18T08:00:00.000Z' }),
-        session({ platformSessionId: 'new', startedAt: '2026-07-21T08:00:00.000Z' }),
-      ],
-      [],
-      [
-        ledger({
-          id: 'workout:old',
-          status: 'synced',
-          remoteWorkoutId: 'r1',
-          startedAt: '2026-07-18T08:00:00.000Z',
-        }),
-      ],
-    );
-    expect(rows.map((r) => r.platformSessionId)).toEqual(['new', 'old']);
+    fetchRemoteWorkoutsForMatch.mockRejectedValueOnce(new Error('offline'));
+
+    const rows = await listRecentPlatformWorkoutsWithStatus();
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.platformSessionId).toBe('sess-123');
+    // Built from an empty `remotes` list: no match, no ledger, so needs_sync —
+    // and no remote id invented from the failed lookup.
     expect(rows[0]?.status).toBe('needs_sync');
-    expect(rows[1]?.status).toBe('synced');
+    expect(rows[0]?.remoteWorkoutId).toBeUndefined();
+    expect(warn).toHaveBeenCalledWith(
+      '[HealthSync] recent workouts remote match failed',
+      'offline',
+    );
+    warn.mockRestore();
+  });
+
+  it('keeps the ledger overlay when the remote match fails', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    ledgerItems = [
+      {
+        id: 'workout:sess-123',
+        kind: 'workout',
+        platform: 'healthkit',
+        title: 'Cycling',
+        status: 'failed',
+        lastError: 'Upload failed',
+        attemptCount: 2,
+      },
+    ];
+    fetchRemoteWorkoutsForMatch.mockRejectedValueOnce(new Error('offline'));
+
+    const [row] = await listRecentPlatformWorkoutsWithStatus();
+
+    expect(row?.status).toBe('failed');
+    expect(row?.lastError).toBe('Upload failed');
+    warn.mockRestore();
+  });
+
+  it('returns an empty list when the device has no sessions in the window', async () => {
+    deviceSessions = [];
+    await expect(listRecentPlatformWorkoutsWithStatus()).resolves.toEqual([]);
   });
 });
 
-describe('isUnsyncedRecentStatus', () => {
-  it('flags needs_sync / failed / pending only', () => {
-    expect(isUnsyncedRecentStatus('needs_sync')).toBe(true);
-    expect(isUnsyncedRecentStatus('failed')).toBe(true);
-    expect(isUnsyncedRecentStatus('pending')).toBe(true);
-    expect(isUnsyncedRecentStatus('synced')).toBe(false);
-    expect(isUnsyncedRecentStatus('syncing')).toBe(false);
+describe('findPlatformWorkoutSession', () => {
+  it('returns the session with the given platform id', async () => {
+    deviceSessions = [olderSession, sampleSession];
+
+    await expect(findPlatformWorkoutSession('sess-123')).resolves.toEqual(sampleSession);
+    expect(readPlatformWorkouts).toHaveBeenCalledWith({ lookbackDays: LOOKBACK_DAYS });
+  });
+
+  it('returns undefined when the session is no longer readable', async () => {
+    deviceSessions = [olderSession];
+
+    await expect(findPlatformWorkoutSession('sess-123')).resolves.toBeUndefined();
+  });
+
+  it('honours an explicit lookback window', async () => {
+    await findPlatformWorkoutSession('sess-123', 3);
+    expect(readPlatformWorkouts).toHaveBeenCalledWith({ lookbackDays: 3 });
   });
 });

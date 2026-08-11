@@ -231,7 +231,8 @@ describe('recentWorkoutRows', () => {
         [sampleRemote],
         [
           {
-            id: 'w:healthkit:sess-123',
+            // Must be what `workoutLedgerId` produces, or the row never finds it.
+            id: 'workout:sess-123',
             kind: 'workout',
             platform: 'healthkit',
             title: 'Cycling',
@@ -250,6 +251,42 @@ describe('recentWorkoutRows', () => {
 
       expect(rows[1]?.platformSessionId).toBe('sess-100');
       expect(rows[1]?.status).toBe('needs_sync');
+    });
+
+    it('overlays a ledger match onto the right row when nothing matches remotely', () => {
+      const sessionOlder: PlatformWorkoutSession = {
+        platformSessionId: 'sess-100',
+        platform: 'healthkit',
+        sportType: 'running',
+        startedAt: '2026-07-25T08:00:00Z',
+        durationSec: 1800,
+      };
+
+      // The ledger entry belongs to the *older* session, and there are no remotes
+      // at all: the only way the second row can read `synced` is the ledger id
+      // lookup landing on the right session rather than on row order.
+      const rows = buildRecentWorkoutRows(
+        [sessionOlder, sampleSession],
+        [],
+        [
+          {
+            id: 'workout:sess-100',
+            kind: 'workout',
+            platform: 'healthkit',
+            title: 'Running',
+            status: 'synced',
+            remoteWorkoutId: 'remote-100',
+            startedAt: '2026-07-25T08:00:00Z',
+            attemptCount: 1,
+          },
+        ],
+      );
+
+      expect(rows.map((r) => r.platformSessionId)).toEqual(['sess-123', 'sess-100']);
+      expect(rows[0]?.status).toBe('needs_sync');
+      expect(rows[0]?.remoteWorkoutId).toBeUndefined();
+      expect(rows[1]?.status).toBe('synced');
+      expect(rows[1]?.remoteWorkoutId).toBe('remote-100');
     });
 
     it('threads now through so a stale syncing row is rescued, and a fresh one is not', () => {
