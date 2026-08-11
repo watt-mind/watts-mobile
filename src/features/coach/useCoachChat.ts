@@ -48,6 +48,12 @@ import { buildCoachSeedContext, buildSessionCoachSeedContext, withSeedPrefix } f
 import { takeSessionDiscuss } from './sessionDiscussStore';
 import { decideSessionOpen, findRoomById } from './sessionPolicy';
 import { shouldApplyStreamCallback } from './streamGeneration';
+import {
+  countAssistantMessages,
+  shouldClearAwaitingTurnStart,
+  shouldPollTurn,
+  shouldStopTurnPolling,
+} from './turnPolling';
 import type {
   ChatRoomSummary,
   CoachUIMessage,
@@ -141,6 +147,10 @@ export function useCoachChat(options: UseCoachChatOptions = {}): UseCoachChatRes
   const wsPingTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollGraceUntil = useRef(0);
+  // Assistant-message count captured when the grace window was armed. A reply
+  // has landed only when the live count exceeds it — "the thread contains an
+  // assistant message" is true in every ongoing chat and is not evidence.
+  const assistantBaseline = useRef(0);
   const loadInFlight = useRef(false);
   const pendingLoad = useRef<MessageLoadRequest | null>(null);
   const loadGeneration = useRef(0);
@@ -165,6 +175,19 @@ export function useCoachChat(options: UseCoachChatOptions = {}): UseCoachChatRes
   useEffect(() => {
     awaitingTurnStartRef.current = awaitingTurnStart;
   }, [awaitingTurnStart]);
+
+  /**
+   * Flip the awaiting flag on the ref and the state together.
+   *
+   * The ref used to be synced only by the effect above, which does not run
+   * until after render — far too late for `restartTurnPolling()`, which
+   * `send()` calls synchronously in the same tick. The poll timer therefore
+   * read a stale `false` and never started (CW-488).
+   */
+  const setAwaitingTurn = useCallback((value: boolean) => {
+    awaitingTurnStartRef.current = value;
+    setAwaitingTurnStart(value);
+  }, []);
 
   useEffect(() => {
     seedUsedRef.current = seedUsed;
@@ -244,16 +267,20 @@ export function useCoachChat(options: UseCoachChatOptions = {}): UseCoachChatRes
       // so it can't resurrect the composer/typing state or write into the new
       // room's messages.
       if (!shouldApplyStreamCallback(sendGeneration.current, roomGeneration.current)) return;
-      setAwaitingTurnStart(false);
+      setAwaitingTurn(false);
       const id = roomIdRef.current;
       if (id) {
+        // No forced grace window here: the stream already delivered this turn.
+        // The silent reload re-runs restartTurnPolling with fresh messages, so a
+        // follow-up turn (e.g. a tool continuation) still starts the timer,
+        // without polling for 15s after every ordinary reply.
         void loadMessagesRef.current(id, { silent: true });
-        restartTurnPollingRef.current({ forceForMs: POLL_GRACE_MS });
+        restartTurnPollingRef.current();
       }
     },
     onError: (err) => {
       if (!shouldApplyStreamCallback(sendGeneration.current, roomGeneration.current)) return;
-      setAwaitingTurnStart(false);
+      setAwaitingTurn(false);
       const quota = parseQuotaError(err, 'COACH_CHAT');
       setSendQuota(quota);
       setSendError(quota ? null : friendlyError(err, 'Failed to send message'));
@@ -316,12 +343,13 @@ export function useCoachChat(options: UseCoachChatOptions = {}): UseCoachChatRes
         messagesRef.current = merged;
         setMessagesRef.current(merged);
         if (
-          transformed.some(
-            (message) =>
-              message.role === 'assistant' || isActiveTurnStatus(message.metadata?.turnStatus),
-          )
+          shouldClearAwaitingTurnStart({
+            hasActiveTurn: hasActiveTurn(merged),
+            assistantCount: countAssistantMessages(merged),
+            assistantBaseline: assistantBaseline.current,
+          })
         ) {
-          setAwaitingTurnStart(false);
+          setAwaitingTurn(false);
         }
         if (transformed.length > 0) {
           setSeedUsed(true);
@@ -368,7 +396,7 @@ export function useCoachChat(options: UseCoachChatOptions = {}): UseCoachChatRes
         }
       }
     },
-    [queryClient],
+    [queryClient, setAwaitingTurn],
   );
 
   useEffect(() => {
@@ -380,18 +408,24 @@ export function useCoachChat(options: UseCoachChatOptions = {}): UseCoachChatRes
       if (!activeRef.current) return;
       if (options?.forceForMs && options.forceForMs > 0) {
         pollGraceUntil.current = Date.now() + options.forceForMs;
+        // Snapshot what "already replied" looks like right now, so the reply we
+        // are about to wait for is distinguishable from the previous one.
+        assistantBaseline.current = countAssistantMessages(messagesRef.current);
       }
 
       stopTurnPolling();
 
       const id = roomIdRef.current;
-      const activeTurn = hasActiveTurn(messagesRef.current);
-      const hasAssistant = messagesRef.current.some((m) => m.role === 'assistant');
       if (
-        !id ||
-        (!activeTurn &&
-          !awaitingTurnStartRef.current &&
-          (hasAssistant || Date.now() >= pollGraceUntil.current))
+        !shouldPollTurn({
+          roomId: id,
+          hasActiveTurn: hasActiveTurn(messagesRef.current),
+          awaitingTurnStart: awaitingTurnStartRef.current,
+          assistantCount: countAssistantMessages(messagesRef.current),
+          assistantBaseline: assistantBaseline.current,
+          pollGraceUntil: pollGraceUntil.current,
+          now: Date.now(),
+        })
       ) {
         setUsingPollFallback(false);
         return;
@@ -407,12 +441,10 @@ export function useCoachChat(options: UseCoachChatOptions = {}): UseCoachChatRes
 
         const currentId = roomIdRef.current;
         let nextHasActiveTurn = hasActiveTurn(messagesRef.current);
-        let nextHasAssistant = messagesRef.current.some((m) => m.role === 'assistant');
 
         try {
           const roomState = await fetchRoomState(currentId);
           nextHasActiveTurn = isActiveTurnStatus(roomState.activeTurnStatus);
-          nextHasAssistant = roomState.hasAssistantMessage;
 
           if (
             nextHasActiveTurn ||
@@ -421,22 +453,26 @@ export function useCoachChat(options: UseCoachChatOptions = {}): UseCoachChatRes
           ) {
             await loadMessagesRef.current(currentId, { silent: true });
             nextHasActiveTurn = hasActiveTurn(messagesRef.current);
-            nextHasAssistant = messagesRef.current.some((m) => m.role === 'assistant');
           }
         } catch {
           try {
             await loadMessagesRef.current(currentId, { silent: true });
             nextHasActiveTurn = hasActiveTurn(messagesRef.current);
-            nextHasAssistant = messagesRef.current.some((m) => m.role === 'assistant');
           } catch {
             // ignore
           }
         }
 
         if (
-          !nextHasActiveTurn &&
-          !awaitingTurnStartRef.current &&
-          (nextHasAssistant || Date.now() >= pollGraceUntil.current)
+          shouldStopTurnPolling({
+            roomId: roomIdRef.current,
+            hasActiveTurn: nextHasActiveTurn,
+            awaitingTurnStart: awaitingTurnStartRef.current,
+            assistantCount: countAssistantMessages(messagesRef.current),
+            assistantBaseline: assistantBaseline.current,
+            pollGraceUntil: pollGraceUntil.current,
+            now: Date.now(),
+          })
         ) {
           stopTurnPolling();
           setUsingPollFallback(false);
@@ -532,7 +568,7 @@ export function useCoachChat(options: UseCoachChatOptions = {}): UseCoachChatRes
           data.messageId &&
           data.turnId
         ) {
-          setAwaitingTurnStart(false);
+          setAwaitingTurn(false);
           {
             const next = applyAssistantTextDelta(messagesRef.current, {
               messageId: data.messageId,
@@ -551,7 +587,7 @@ export function useCoachChat(options: UseCoachChatOptions = {}): UseCoachChatRes
             data.message.role === 'assistant' ||
             isActiveTurnStatus(data.message.metadata?.turnStatus)
           ) {
-            setAwaitingTurnStart(false);
+            setAwaitingTurn(false);
           }
           {
             const next = upsertChatMessage(messagesRef.current, data.message);
@@ -569,7 +605,7 @@ export function useCoachChat(options: UseCoachChatOptions = {}): UseCoachChatRes
 
         if (data.type === 'chat_turn_status' && data.turnId) {
           if (isTerminalTurnStatus(data.status)) {
-            setAwaitingTurnStart(false);
+            setAwaitingTurn(false);
             void loadMessagesRef.current(currentRoom, { silent: true });
           }
         }
@@ -585,7 +621,6 @@ export function useCoachChat(options: UseCoachChatOptions = {}): UseCoachChatRes
         clearInterval(wsPingTimer.current);
         wsPingTimer.current = null;
       }
-
       if (hasActiveTurn(messagesRef.current) || awaitingTurnStartRef.current) {
         setUsingPollFallback(true);
         restartTurnPollingRef.current({ forceForMs: POLL_GRACE_MS });
@@ -604,7 +639,7 @@ export function useCoachChat(options: UseCoachChatOptions = {}): UseCoachChatRes
     socket.onerror = () => {
       socket.close();
     };
-  }, []);
+  }, [setAwaitingTurn]);
 
   useEffect(() => {
     restartTurnPollingRef.current = restartTurnPolling;
@@ -621,8 +656,8 @@ export function useCoachChat(options: UseCoachChatOptions = {}): UseCoachChatRes
       roomGeneration.current += 1;
       stopTurnPolling();
       pollGraceUntil.current = 0;
-      awaitingTurnStartRef.current = false;
-      setAwaitingTurnStart(false);
+      assistantBaseline.current = 0;
+      setAwaitingTurn(false);
       clearError();
 
       setRoomId(room.roomId);
@@ -646,7 +681,7 @@ export function useCoachChat(options: UseCoachChatOptions = {}): UseCoachChatRes
       }
       await loadMessages(room.roomId);
     },
-    [clearError, loadMessages, stop, stopTurnPolling],
+    [clearError, loadMessages, setAwaitingTurn, stop, stopTurnPolling],
   );
 
   const refreshRooms = useCallback(async () => {
@@ -897,7 +932,7 @@ export function useCoachChat(options: UseCoachChatOptions = {}): UseCoachChatRes
 
       setInput('');
       setPendingAttachments([]);
-      setAwaitingTurnStart(true);
+      setAwaitingTurn(true);
       // Tag this stream with the room generation live right now, so a late
       // onFinish/onError firing after a room switch can recognize itself as
       // stale (see shouldApplyStreamCallback) instead of touching the new room.
@@ -914,7 +949,7 @@ export function useCoachChat(options: UseCoachChatOptions = {}): UseCoachChatRes
           await sendMessage({ text: outbound || ' ' });
         }
       } catch (err) {
-        setAwaitingTurnStart(false);
+        setAwaitingTurn(false);
         setSendError(friendlyError(err, 'Failed to send message'));
         setInput(text);
         setPendingAttachments(uploaded.map((item) => ({ ...item, uploading: false })));
@@ -930,6 +965,7 @@ export function useCoachChat(options: UseCoachChatOptions = {}): UseCoachChatRes
       queryClient,
       restartTurnPolling,
       sendMessage,
+      setAwaitingTurn,
     ],
   );
 
@@ -978,7 +1014,7 @@ export function useCoachChat(options: UseCoachChatOptions = {}): UseCoachChatRes
           approved: approval.approved,
           reason: approval.reason,
         });
-        setAwaitingTurnStart(true);
+        setAwaitingTurn(true);
         restartTurnPolling({ forceForMs: POLL_GRACE_MS });
         await loadMessages(currentRoomId, { silent: true });
       } catch (err) {
@@ -987,7 +1023,7 @@ export function useCoachChat(options: UseCoachChatOptions = {}): UseCoachChatRes
         throw err;
       }
     },
-    [loadMessages, restartTurnPolling],
+    [loadMessages, restartTurnPolling, setAwaitingTurn],
   );
 
   const resumeTurn = useCallback(async () => {
@@ -995,26 +1031,26 @@ export function useCoachChat(options: UseCoachChatOptions = {}): UseCoachChatRes
     setSendError(null);
     try {
       await resumeChatTurn(recoverable.turnId);
-      setAwaitingTurnStart(true);
+      setAwaitingTurn(true);
       restartTurnPolling({ forceForMs: POLL_GRACE_MS });
       if (roomIdRef.current) await loadMessages(roomIdRef.current, { silent: true });
     } catch (err) {
       setSendError(friendlyError(err, 'Resume failed'));
     }
-  }, [loadMessages, recoverable.turnId, restartTurnPolling]);
+  }, [loadMessages, recoverable.turnId, restartTurnPolling, setAwaitingTurn]);
 
   const retryTurn = useCallback(async () => {
     if (!recoverable.turnId) return;
     setSendError(null);
     try {
       await retryChatTurn(recoverable.turnId);
-      setAwaitingTurnStart(true);
+      setAwaitingTurn(true);
       restartTurnPolling({ forceForMs: POLL_GRACE_MS });
       if (roomIdRef.current) await loadMessages(roomIdRef.current, { silent: true });
     } catch (err) {
       setSendError(friendlyError(err, 'Retry failed'));
     }
-  }, [loadMessages, recoverable.turnId, restartTurnPolling]);
+  }, [loadMessages, recoverable.turnId, restartTurnPolling, setAwaitingTurn]);
 
   const refresh = useCallback(async () => {
     let currentApiUrl = apiUrl;
