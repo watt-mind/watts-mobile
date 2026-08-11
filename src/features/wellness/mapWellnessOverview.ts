@@ -1,6 +1,7 @@
 import { kgToDisplayWeight, weightUnitLabel } from '@/src/features/profile/mapProfile';
 import { calculateTrend } from '@/src/features/profile/trend';
 import type { WeightUnits } from '@/src/features/profile/types';
+import { localDateYmd } from '@/src/lib/date';
 
 import {
   isPlausibleRestingHr,
@@ -25,14 +26,6 @@ function asFiniteNumber(value: unknown): number | null {
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== 'object') return null;
   return value as Record<string, unknown>;
-}
-
-function localTodayKey(): string {
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, '0');
-  const d = String(now.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
 }
 
 function dateKey(raw: unknown): string | null {
@@ -155,7 +148,7 @@ export function mapWellnessOverview(
   const root = asRecord(json);
   if (!root) return null;
 
-  const date = dateKey(root.date) || dateKey(root.wellnessDate) || localTodayKey();
+  const date = dateKey(root.date) || dateKey(root.wellnessDate) || localDateYmd();
 
   const trendsRoot = asRecord(root.trends) || {};
   const hrvTrend = parseTrend(trendsRoot.hrv);
@@ -284,7 +277,7 @@ export function mapWellnessOverview(
   return {
     id: typeof root.id === 'string' ? root.id : null,
     date,
-    isStale: date !== localTodayKey(),
+    isStale: date !== localDateYmd(),
     metrics,
     barSeries,
     coachNote,

@@ -1,4 +1,4 @@
-import { localDateYmd } from '@/src/features/log/mapLogForm';
+import { localDateYmd } from '@/src/lib/date';
 
 import {
   DESCRIPTION_MAX,

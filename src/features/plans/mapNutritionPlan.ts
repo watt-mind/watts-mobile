@@ -1,4 +1,4 @@
-import { localDateKey } from '@/src/features/today/weekGlance';
+import { dateKeysInRange, localDateKey } from '@/src/lib/date';
 
 import type {
   GroceryItemView,
@@ -76,20 +76,6 @@ function weekdayLabelForKey(dateKey: string): string {
     month: 'short',
     day: 'numeric',
   });
-}
-
-function dateKeysInRange(start: string, end: string): string[] {
-  const keys: string[] = [];
-  const cursor = new Date(`${start}T12:00:00`);
-  const endDate = new Date(`${end}T12:00:00`);
-  while (cursor <= endDate && keys.length < 14) {
-    const y = cursor.getFullYear();
-    const m = String(cursor.getMonth() + 1).padStart(2, '0');
-    const d = String(cursor.getDate()).padStart(2, '0');
-    keys.push(`${y}-${m}-${d}`);
-    cursor.setDate(cursor.getDate() + 1);
-  }
-  return keys;
 }
 
 function toDailyBaseKey(slotName?: string | null): string {
@@ -465,24 +451,4 @@ export function mapGroceryItems(json: unknown): GroceryItemView[] {
       };
     })
     .filter((x): x is GroceryItemView => Boolean(x));
-}
-
-export function weekRangeFromOffset(weekOffset: number): { start: string; end: string } {
-  const now = new Date();
-  const day = now.getDay(); // 0 Sun
-  const mondayOffset = day === 0 ? -6 : 1 - day;
-  const monday = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate() + mondayOffset + weekOffset * 7,
-  );
-  const sunday = new Date(monday);
-  sunday.setDate(monday.getDate() + 6);
-  const fmt = (d: Date) => {
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const dayNum = String(d.getDate()).padStart(2, '0');
-    return `${y}-${m}-${dayNum}`;
-  };
-  return { start: fmt(monday), end: fmt(sunday) };
 }

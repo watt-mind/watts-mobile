@@ -10,12 +10,12 @@ import { NutritionAccents } from '@/src/theme/nutritionAccents';
 import { useThemeColors } from '@/src/theme/useThemeColors';
 
 import { NutritionMacroExplainSheet } from './NutritionMacroExplainSheet';
+import { localDateYmd } from '@/src/lib/date';
 import {
   canExplainMetric,
   formatMacroGrams,
   fuelStateLabel,
   goalProgressPct,
-  localDateYmd,
 } from './mapNutrition';
 import type { MacroExplainLabel, NutritionDayTotals } from './types';
 

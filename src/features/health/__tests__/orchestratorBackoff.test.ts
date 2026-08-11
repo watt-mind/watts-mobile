@@ -44,7 +44,7 @@ vi.mock('../readers', () => ({
 
 import { _resetSyncLedgerForTests, getLedgerItem } from '../ledger';
 import { wellnessLedgerId } from '../ledgerHelpers';
-import { localDateYmd } from '../mapToWellnessPayload';
+import { localDateYmd } from '@/src/lib/date';
 import { runHealthSyncPass } from '../orchestrator';
 import { _resetWatermarksForTests } from '../watermarks';
 

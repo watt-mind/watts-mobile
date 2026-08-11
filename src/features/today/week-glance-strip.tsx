@@ -4,7 +4,8 @@ import { SectionHeader } from '@/src/components/SectionHeader';
 
 import type { PlannedListItem } from '@/src/features/activity/types';
 import { useActivityGlanceWorkoutsQuery } from '@/src/features/activity/useActivity';
-import { resolveWeekGlanceStripState, weekRangeContaining } from '@/src/features/today/weekGlance';
+import { weekRangeContaining } from '@/src/lib/date';
+import { resolveWeekGlanceStripState } from '@/src/features/today/weekGlance';
 
 type WeekGlanceStripProps = {
   planned: PlannedListItem[] | undefined;

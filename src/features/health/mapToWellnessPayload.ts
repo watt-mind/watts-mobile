@@ -1,3 +1,5 @@
+import { localDateYmd } from '@/src/lib/date';
+
 import type { DailyWellnessSample, HealthWellnessUploadPayload } from './types';
 
 /** True when the sample has at least one objective metric to upload. */
@@ -110,13 +112,6 @@ export function mapSampleToWellnessPayload(
   }
 
   return payload;
-}
-
-export function localDateYmd(d: Date = new Date()): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
 }
 
 export function lookbackStartDate(days: number, from: Date = new Date()): Date {

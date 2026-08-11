@@ -2,6 +2,10 @@
  * Wire encoding for calendar dates the athlete picked as a plain `YYYY-MM-DD`
  * (CW-493).
  *
+ * Complementary to `./date.ts`, which goes the opposite direction: `date.ts`
+ * derives a calendar key from an instant; this module encodes a calendar key
+ * for the wire. The two stay separate on purpose — do not merge them.
+ *
  * The old convention anchored those days at UTC noon (`T12:00:00Z`), which is
  * only safe within ±11 hours of UTC: in Pacific/Auckland (UTC+12, +13 in DST)
  * `2026-08-10T12:00:00Z` is already `2026-08-11` locally, so an A-race created

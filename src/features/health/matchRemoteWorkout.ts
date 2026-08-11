@@ -1,4 +1,4 @@
-import { localDateYmd } from './mapToWellnessPayload';
+import { localDateYmd } from '@/src/lib/date';
 import { sportLabel } from './sportTypes';
 import type { PlatformWorkoutSession, RemoteWorkoutMatchCandidate } from './types';
 import { WORKOUT_MATCH_TOLERANCE_MS } from './types';

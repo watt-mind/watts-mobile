@@ -1,7 +1,8 @@
 import { ApiError } from '@/src/api/errors';
 import { apiFetch } from '@/src/api/client';
 
-import { localDateYmd, pickNextFuelingWindow, pickTodayNutrition } from './mapNutrition';
+import { localDateYmd } from '@/src/lib/date';
+import { pickNextFuelingWindow, pickTodayNutrition } from './mapNutrition';
 import type {
   ApiMealType,
   HydrationQuickAddPayload,

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { localDateYmd } from '@/src/lib/date';
 import {
   apiMealTypeToMealSlot,
   canExplainMetric,
@@ -9,7 +10,6 @@ import {
   formatWindowTime,
   fuelStateLabel,
   goalProgressPct,
-  localDateYmd,
   mapNutritionLoggedItems,
   mealSlotToApiMealType,
   nutritionWebPath,

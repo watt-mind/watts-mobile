@@ -1,5 +1,5 @@
 import type { ActivityListItem, PlannedListItem } from '@/src/features/activity/types';
-import { localDateKey, weekRangeContaining } from '@/src/features/today/weekGlance';
+import { localDateKey, weekRangeContaining } from '@/src/lib/date';
 
 /** Weeks including the current week that look backward from “now”. */
 export const ACTIVITY_GLANCE_PAST_WEEKS = 10;

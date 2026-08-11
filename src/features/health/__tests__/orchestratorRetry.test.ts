@@ -46,7 +46,7 @@ vi.mock('../readers', () => ({
 
 import { _resetSyncLedgerForTests, getLedgerItem, saveLedgerItem } from '../ledger';
 import { seedNeedsSync, wellnessLedgerId, workoutLedgerId } from '../ledgerHelpers';
-import { localDateYmd } from '../mapToWellnessPayload';
+import { localDateYmd } from '@/src/lib/date';
 import { retryLedgerItem, retryLookbackDays } from '../orchestrator';
 import { LOOKBACK_DAYS } from '../types';
 

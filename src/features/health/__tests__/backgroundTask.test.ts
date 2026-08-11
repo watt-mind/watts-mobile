@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { recordBackgroundSyncFailure } from '../backgroundTask';
 import { _resetSyncLedgerForTests, loadSyncLedger, saveLedgerItem } from '../ledger';
 import { completeLedgerSuccess, seedNeedsSync, wellnessLedgerId } from '../ledgerHelpers';
-import { localDateYmd } from '../mapToWellnessPayload';
+import { localDateYmd } from '@/src/lib/date';
 import { _resetSyncDiagnosticsForTests, loadSyncDiagnostic } from '../syncDiagnostics';
 
 vi.mock('@react-native-async-storage/async-storage', () => {

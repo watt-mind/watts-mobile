@@ -16,8 +16,8 @@ import {
   workoutLedgerId,
 } from './ledgerHelpers';
 import { getLedgerItem, saveLedgerItem } from './ledger';
+import { localDateYmd } from '@/src/lib/date';
 import {
-  localDateYmd,
   mapSampleToWellnessPayload,
   sampleHasMetrics,
   wellnessContentFingerprint,

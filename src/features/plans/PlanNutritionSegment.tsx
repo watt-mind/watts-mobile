@@ -24,11 +24,8 @@ import { APP_HREFS } from '@/src/linking/appHrefs';
 
 import { formatWeekRangeLabel, humanizeMealStatus } from './formatPlanCopy';
 import { MealRecommendationPickerSheet } from './MealRecommendationPickerSheet';
-import {
-  mapNutritionPlanDays,
-  weekHasSelectedMeals,
-  weekRangeFromOffset,
-} from './mapNutritionPlan';
+import { weekRangeFromOffset } from '@/src/lib/date';
+import { mapNutritionPlanDays, weekHasSelectedMeals } from './mapNutritionPlan';
 import type { NutritionPlanApi, NutritionPlanMealView, NutritionPlanWindowView } from './types';
 
 type NutritionSubmode = 'strategy' | 'plan';

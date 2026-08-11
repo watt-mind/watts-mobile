@@ -1,6 +1,7 @@
 import { Platform } from 'react-native';
 
-import { localDateYmd, lookbackStartDate, eachLocalDateYmd } from '../mapToWellnessPayload';
+import { localDateYmd } from '@/src/lib/date';
+import { lookbackStartDate, eachLocalDateYmd } from '../mapToWellnessPayload';
 import { canonicalSportFromHealthConnect, sportLabel } from '../sportTypes';
 import type { DailyWellnessSample, HealthReadWindow, PlatformWorkoutSession } from '../types';
 import { LOOKBACK_DAYS } from '../types';

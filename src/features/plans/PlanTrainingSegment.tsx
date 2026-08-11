@@ -26,7 +26,7 @@ import { humanizeWorkoutType } from '@/src/lib/humanizeWorkoutType';
 import { hapticError, hapticLight, hapticSuccess } from '@/src/lib/haptics';
 import { APP_HREFS } from '@/src/linking/appHrefs';
 import { useThemeColors } from '@/src/theme/useThemeColors';
-import { localDateKey } from '@/src/features/today/weekGlance';
+import { localDateKey } from '@/src/lib/date';
 
 import { formatDayChipLabel, formatWeekRangeLabel, humanizePlanStrategy } from './formatPlanCopy';
 import {
