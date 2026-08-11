@@ -25,6 +25,7 @@ import {
   localDateYmd,
   nutritionWebPath,
   quickLogHasContent,
+  quickLogValidationError,
   toNutritionUploadPayload,
 } from './mapNutrition';
 import {
@@ -285,6 +286,14 @@ export function NutritionSection({ entriesMode = 'full' }: NutritionSectionProps
   const onLogItem = async () => {
     if (!quickLogHasContent(form)) {
       setFormError('Enter a name or at least one macro before saving.');
+      return;
+    }
+    // Same rules as the edit sheet (CW-349): unparseable or negative macros are
+    // rejected here rather than posted as missing/negative values.
+    const validationError = quickLogValidationError(form);
+    if (validationError) {
+      hapticError();
+      setFormError(validationError);
       return;
     }
     setFormError(null);

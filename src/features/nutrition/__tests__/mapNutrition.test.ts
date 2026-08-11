@@ -18,9 +18,14 @@ import {
   quickLogHasContent,
   removeItemFromDay,
   roundMacro,
+  QUICK_LOG_INVALID_NUMBER,
+  QUICK_LOG_NEGATIVE,
   quickLogInvalidFields,
+  quickLogNegativeFields,
+  quickLogValidationError,
   toNutritionUploadPayload,
 } from '../mapNutrition';
+import { EDIT_ITEM_INVALID_NUMBER, EDIT_ITEM_NEGATIVE } from '../editNutritionItemForm';
 
 describe('pickTodayNutrition', () => {
   it('maps today’s macros and water from list payload', () => {
@@ -526,5 +531,106 @@ describe('quick-log comma-decimal input (CW-484)', () => {
         fat: '',
       }),
     ).toEqual([]);
+  });
+
+  it('does not report comma decimals as invalid or negative', () => {
+    const form = {
+      meal: 'SNACK' as const,
+      name: 'Banana',
+      calories: '105',
+      protein: '1,3',
+      carbs: '27,5',
+      fat: '0,4',
+    };
+    expect(quickLogInvalidFields(form)).toEqual([]);
+    expect(quickLogNegativeFields(form)).toEqual([]);
+    expect(quickLogValidationError(form)).toBeNull();
+  });
+});
+
+describe('quick-log negative guard (CW-349)', () => {
+  it('never emits a negative macro in the upload payload', () => {
+    const payload = toNutritionUploadPayload(
+      {
+        meal: 'SNACK',
+        name: 'Bad entry',
+        calories: '-500',
+        protein: '-10',
+        carbs: '-2,5',
+        fat: '-0.4',
+      },
+      '2026-01-05',
+      new Date('2026-01-05T10:00:00.000Z'),
+    );
+    const item = payload.items[0]!;
+    expect(item.calories).toBeGreaterThanOrEqual(0);
+    expect(item.protein).toBeGreaterThanOrEqual(0);
+    expect(item.carbs).toBeGreaterThanOrEqual(0);
+    expect(item.fat).toBeGreaterThanOrEqual(0);
+  });
+
+  it('still emits valid positive macros unchanged', () => {
+    const payload = toNutritionUploadPayload(
+      { meal: 'SNACK', name: 'Oats', calories: '320', protein: '18', carbs: '45,5', fat: '8' },
+      '2026-01-05',
+      new Date('2026-01-05T10:00:00.000Z'),
+    );
+    expect(payload.items[0]).toMatchObject({ calories: 320, protein: 18, carbs: 45.5, fat: 8 });
+  });
+
+  it('flags each negative field independently', () => {
+    for (const key of ['calories', 'protein', 'carbs', 'fat'] as const) {
+      expect(quickLogNegativeFields({ ...emptyQuickLogForm(), [key]: '-1' })).toEqual([key]);
+    }
+    expect(
+      quickLogNegativeFields({
+        meal: 'SNACK',
+        name: 'x',
+        calories: '-500',
+        protein: '10',
+        carbs: '',
+        fat: '-0,5',
+      }),
+    ).toEqual(['calories', 'fat']);
+  });
+
+  it('returns no negative fields for a valid or empty form', () => {
+    expect(quickLogNegativeFields(emptyQuickLogForm())).toEqual([]);
+    expect(
+      quickLogNegativeFields({
+        meal: 'SNACK',
+        name: 'Oats',
+        calories: '320',
+        protein: '18',
+        carbs: '45,5',
+        fat: '0',
+      }),
+    ).toEqual([]);
+  });
+
+  it('distinguishes unparseable from negative, mirroring the edit sheet wording', () => {
+    expect(QUICK_LOG_INVALID_NUMBER).toBe(EDIT_ITEM_INVALID_NUMBER);
+    expect(QUICK_LOG_NEGATIVE).toBe(EDIT_ITEM_NEGATIVE);
+
+    expect(quickLogValidationError({ ...emptyQuickLogForm(), fat: 'lots' })).toBe(
+      QUICK_LOG_INVALID_NUMBER,
+    );
+    expect(quickLogValidationError({ ...emptyQuickLogForm(), calories: '-500' })).toBe(
+      QUICK_LOG_NEGATIVE,
+    );
+    // Unparseable wins when both are present — it is the more fundamental problem.
+    expect(quickLogValidationError({ ...emptyQuickLogForm(), calories: '-500', fat: 'lots' })).toBe(
+      QUICK_LOG_INVALID_NUMBER,
+    );
+    expect(quickLogValidationError({ ...emptyQuickLogForm(), name: 'Oats' })).toBeNull();
+  });
+
+  it('leaves quickLogHasContent behaviour unchanged for blank optional macros', () => {
+    const nameOnly = { ...emptyQuickLogForm(), name: 'Oats' };
+    expect(quickLogHasContent(nameOnly)).toBe(true);
+    expect(quickLogInvalidFields(nameOnly)).toEqual([]);
+    expect(quickLogNegativeFields(nameOnly)).toEqual([]);
+    expect(quickLogValidationError(nameOnly)).toBeNull();
+    expect(quickLogHasContent(emptyQuickLogForm())).toBe(false);
   });
 });

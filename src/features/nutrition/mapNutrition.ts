@@ -1,5 +1,6 @@
 import { parseDecimal } from '@/src/lib/parseDecimal';
 
+import { EDIT_ITEM_INVALID_NUMBER, EDIT_ITEM_NEGATIVE } from './editNutritionItemForm';
 import type {
   ApiMealType,
   FuelingPlanAnalysis,
@@ -327,15 +328,52 @@ function parseOptionalNumber(value: string): number | undefined {
   return n == null ? undefined : n;
 }
 
+export type QuickLogNumericField = 'calories' | 'protein' | 'carbs' | 'fat';
+
+const QUICK_LOG_NUMERIC_FIELDS = ['calories', 'protein', 'carbs', 'fat'] as const;
+
+/**
+ * Add and edit must agree on the rules for the same data (CW-349), so the quick-log
+ * messages are the edit sheet's constants rather than a second copy of the wording —
+ * changing one can no longer leave the other behind.
+ */
+export const QUICK_LOG_INVALID_NUMBER = EDIT_ITEM_INVALID_NUMBER;
+export const QUICK_LOG_NEGATIVE = EDIT_ITEM_NEGATIVE;
+
 /**
  * Quick-log fields that were filled in but cannot be parsed. Callers should block
  * the save and surface these rather than posting an item with missing macros.
  */
-export function quickLogInvalidFields(
-  form: NutritionQuickLogForm,
-): ('calories' | 'protein' | 'carbs' | 'fat')[] {
-  const keys = ['calories', 'protein', 'carbs', 'fat'] as const;
-  return keys.filter((key) => form[key].trim() && parseOptionalNumber(form[key]) === undefined);
+export function quickLogInvalidFields(form: NutritionQuickLogForm): QuickLogNumericField[] {
+  return QUICK_LOG_NUMERIC_FIELDS.filter(
+    (key) => form[key].trim() && parseOptionalNumber(form[key]) === undefined,
+  );
+}
+
+/**
+ * Quick-log fields that parse fine but are negative. Kept separate from
+ * {@link quickLogInvalidFields} so callers can tell "I could not read this" from
+ * "I read it and it cannot be negative" and show the right message.
+ */
+export function quickLogNegativeFields(form: NutritionQuickLogForm): QuickLogNumericField[] {
+  return QUICK_LOG_NUMERIC_FIELDS.filter((key) => {
+    const parsed = parseOptionalNumber(form[key]);
+    return parsed != null && parsed < 0;
+  });
+}
+
+/**
+ * The single validation gate for both quick-log save paths (`LogMealSheet.onSubmit`
+ * and `NutritionSection.onLogItem`). Returns the message to surface, or null when
+ * the form is safe to upload. A blank optional macro is "not provided", not an error.
+ *
+ * Unparseable is reported ahead of negative: it is the more fundamental problem, and
+ * a value we could not read has no sign to complain about.
+ */
+export function quickLogValidationError(form: NutritionQuickLogForm): string | null {
+  if (quickLogInvalidFields(form).length > 0) return QUICK_LOG_INVALID_NUMBER;
+  if (quickLogNegativeFields(form).length > 0) return QUICK_LOG_NEGATIVE;
+  return null;
 }
 
 export function emptyQuickLogForm(meal: MealSlot = 'SNACK'): NutritionQuickLogForm {
@@ -377,10 +415,13 @@ export function toNutritionUploadPayload(
   const carbs = parseOptionalNumber(form.carbs);
   const fat = parseOptionalNumber(form.fat);
 
-  if (calories != null) item.calories = Math.round(calories);
-  if (protein != null) item.protein = roundMacro(protein);
-  if (carbs != null) item.carbs = roundMacro(carbs);
-  if (fat != null) item.fat = roundMacro(fat);
+  // Defence in depth (CW-349): callers gate on quickLogValidationError first, but a
+  // negative macro must never reach the server — it silently decrements the day's
+  // totals, which is worse than a rejected save.
+  if (calories != null) item.calories = Math.max(0, Math.round(calories));
+  if (protein != null) item.protein = Math.max(0, roundMacro(protein));
+  if (carbs != null) item.carbs = Math.max(0, roundMacro(carbs));
+  if (fat != null) item.fat = Math.max(0, roundMacro(fat));
 
   return { date, items: [item] };
 }
