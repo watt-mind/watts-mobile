@@ -14,6 +14,7 @@ import {
   messageText,
   nutritionToolSummaries,
   resolveToolDomain,
+  shouldHideAssistantBubble,
   toolInProgressSummaries,
   toolOutcomeSummaries,
   transformStoredMessage,
@@ -227,6 +228,68 @@ describe('mapMessages', () => {
 
     expect(messageImageParts(message)).toHaveLength(1);
     expect(extractPendingApprovals(message)[0]?.toolCallId).toBe('call-1');
+  });
+
+  const imageMessage = (url: string, mediaType?: string): CoachUIMessage => ({
+    id: `img-${url}`,
+    role: 'assistant',
+    parts: [
+      {
+        type: 'file',
+        url,
+        ...(mediaType ? { mediaType } : {}),
+        filename: 'shot.png',
+      } as unknown as CoachUIMessage['parts'][number],
+    ],
+  });
+
+  it('drops image parts whose url is not http(s)', () => {
+    // Model output and tool results are not trusted: a local-file or inline-data
+    // url must never reach the RN image loader (CW-351).
+    expect(messageImageParts(imageMessage('file:///etc/passwd.png', 'image/png'))).toEqual([]);
+    expect(
+      messageImageParts(
+        imageMessage(
+          'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+          'image/png',
+        ),
+      ),
+    ).toEqual([]);
+    // The extension branch must not smuggle an unsafe url in without a mediaType.
+    expect(messageImageParts(imageMessage('file:///etc/passwd.png'))).toEqual([]);
+    expect(messageImageParts(imageMessage('javascript:alert(1)//x.png', 'image/png'))).toEqual([]);
+    expect(messageImageParts(imageMessage('/relative/path.png', 'image/png'))).toEqual([]);
+    expect(messageImageParts(imageMessage('not a url at all', 'image/png'))).toEqual([]);
+    expect(messageImageParts(imageMessage('', 'image/png'))).toEqual([]);
+  });
+
+  it('keeps http(s) image parts with mediaType and filename intact', () => {
+    expect(
+      messageImageParts(imageMessage('https://cdn.example.com/meal.png', 'image/png')),
+    ).toEqual([
+      { url: 'https://cdn.example.com/meal.png', mediaType: 'image/png', filename: 'shot.png' },
+    ]);
+    expect(messageImageParts(imageMessage('http://cdn.example.com/meal.png', 'image/png'))).toEqual(
+      [{ url: 'http://cdn.example.com/meal.png', mediaType: 'image/png', filename: 'shot.png' }],
+    );
+    // Still admitted via the extension branch when the server omits mediaType.
+    expect(messageImageParts(imageMessage('https://cdn.example.com/meal.jpeg'))).toEqual([
+      { url: 'https://cdn.example.com/meal.jpeg', mediaType: undefined, filename: 'shot.png' },
+    ]);
+  });
+
+  it('treats an assistant message whose only image is unsafe as having no images', () => {
+    const message: CoachUIMessage = {
+      ...imageMessage('file:///etc/passwd.png', 'image/png'),
+      metadata: { hideUntilContent: true },
+    };
+    expect(shouldHideAssistantBubble(message)).toBe(true);
+
+    const safe: CoachUIMessage = {
+      ...imageMessage('https://cdn.example.com/meal.png', 'image/png'),
+      metadata: { hideUntilContent: true },
+    };
+    expect(shouldHideAssistantBubble(safe)).toBe(false);
   });
 
   it('summarizes completed nutrition tool parts', () => {

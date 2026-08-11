@@ -1,3 +1,4 @@
+import { isSafeHttpUrl } from './markdownLiteParse';
 import { displayAthleteText } from './seedContext';
 import {
   ACTIVE_TURN_STATUSES,
@@ -53,6 +54,17 @@ export function displayMessageText(
   return displayAthleteText(raw);
 }
 
+/**
+ * Image parts safe to hand to the RN image loader.
+ *
+ * Message parts are not fully trusted — they come from model output and tool
+ * results, not only from the athlete's own uploads — so every url goes through
+ * the same `http:`/`https:` allowlist that gates text links (CW-351). Without
+ * it a `file://…/x.png` part became an on-device file read and a `data:` or
+ * attacker-chosen host became an unprompted outbound fetch on render. Both
+ * consumers (`CoachChat` rendering and `shouldHideAssistantBubble`) are fixed
+ * by filtering here rather than at the render site.
+ */
 export function messageImageParts(
   message: CoachUIMessage | StoredChatMessage | null | undefined,
 ): { url: string; mediaType?: string; filename?: string }[] {
@@ -67,6 +79,7 @@ export function messageImageParts(
       filename?: string;
     };
     if (typed.type !== 'file' || !typed.url) continue;
+    if (!isSafeHttpUrl(typed.url)) continue;
     const mediaType = typed.mediaType || '';
     if (mediaType.startsWith('image/') || /\.(jpe?g|png|gif|webp|heic|heif)$/i.test(typed.url)) {
       images.push({
