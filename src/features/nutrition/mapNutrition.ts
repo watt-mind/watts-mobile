@@ -1,3 +1,4 @@
+import { localDateYmd } from '@/src/lib/date';
 import { parseDecimal } from '@/src/lib/parseDecimal';
 
 import { EDIT_ITEM_INVALID_NUMBER, EDIT_ITEM_NEGATIVE } from './editNutritionItemForm';
@@ -102,13 +103,6 @@ export function mapNutritionLoggedItems(row: Record<string, unknown>): Nutrition
 export function removeItemFromDay(day: NutritionDayTotals, itemId: string): NutritionDayTotals {
   const items = day.items.filter((item) => item.id !== itemId);
   return { ...day, items, isEmpty: items.length === 0 && day.waterMl === 0 };
-}
-
-export function localDateYmd(date = new Date()): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
 }
 
 export function emptyNutritionDay(date = localDateYmd()): NutritionDayTotals {

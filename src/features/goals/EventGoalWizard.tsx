@@ -12,7 +12,7 @@ import { Button } from '@/src/components/Button';
 import { DateYmdField } from '@/src/components/DateYmdField';
 import { Skeleton } from '@/src/components/Skeleton';
 import { useEventsListQuery } from '@/src/features/events/useEvents';
-import { localDateYmd } from '@/src/features/log/mapLogForm';
+import { localDateYmd } from '@/src/lib/date';
 import { hapticError, hapticLight, hapticSuccess } from '@/src/lib/haptics';
 import { APP_HREFS } from '@/src/linking/appHrefs';
 import { useThemeColors } from '@/src/theme/useThemeColors';

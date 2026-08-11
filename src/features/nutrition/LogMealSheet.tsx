@@ -41,10 +41,10 @@ import {
   saveMealToHistory,
   type UserMealHistoryItem,
 } from '@/src/features/nutrition/mealHistoryStorage';
+import { localDateYmd } from '@/src/lib/date';
 import {
   emptyQuickLogForm,
   formatMacroGrams,
-  localDateYmd,
   quickLogHasContent,
   quickLogValidationError,
   toMealHistoryEntry,

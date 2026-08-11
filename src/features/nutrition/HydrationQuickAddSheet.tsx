@@ -5,7 +5,7 @@ import { Modal, Pressable, Text, View } from 'react-native';
 import { Spinner } from '@/src/components/Spinner';
 import { friendlyError } from '@/src/api/errors';
 import { AppSymbol } from '@/src/components/AppSymbol';
-import { localDateYmd } from '@/src/features/nutrition/mapNutrition';
+import { localDateYmd } from '@/src/lib/date';
 import { hydrationPresetVolumes } from '@/src/features/nutrition/mapNutritionSettings';
 import { DEFAULT_QUICK_ADD_VOLUMES } from '@/src/features/nutrition/nutritionSettingsTypes';
 import { useQuickAddHydration } from '@/src/features/nutrition/useNutrition';

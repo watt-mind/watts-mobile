@@ -1,16 +1,10 @@
 import { displayWeightToKg, kgToDisplayWeight } from '@/src/features/profile/mapProfile';
 import type { WeightUnits } from '@/src/features/profile/types';
+import { localDateYmd } from '@/src/lib/date';
 import { parseDecimal } from '@/src/lib/parseDecimal';
 
 import type { LogFormValues, WellnessDay, WellnessUploadPayload } from './types';
 import { clampSubjectiveScore, normalizeStressScore } from './wellnessLabels';
-
-export function localDateYmd(date = new Date()): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
 
 /** True only for real calendar days (rejects JS-normalized values like 2026-02-31). */
 export function isValidCalendarYmd(ymd: string): boolean {

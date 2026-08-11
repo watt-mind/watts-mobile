@@ -23,7 +23,8 @@ import {
   type NutritionItemPatchPayload,
   type NutritionMealAction,
 } from './api';
-import { localDateYmd, removeItemFromDay } from './mapNutrition';
+import { localDateYmd } from '@/src/lib/date';
+import { removeItemFromDay } from './mapNutrition';
 import {
   MOBILE_ENERGY_HORIZON_DAYS_AHEAD,
   mapActiveFuelFeed,

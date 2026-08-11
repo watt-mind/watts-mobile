@@ -10,7 +10,7 @@ import { AnimatedPressable } from '@/src/components/AnimatedPressable';
 import { Button } from '@/src/components/Button';
 import { Skeleton } from '@/src/components/Skeleton';
 import { SportIcon } from '@/src/components/SportIcon';
-import { localDateYmd } from '@/src/features/log/mapLogForm';
+import { localDateYmd } from '@/src/lib/date';
 import { useGoalsQuery, usePrimaryGoalQuery } from '@/src/features/goals/useGoals';
 import { hapticError, hapticLight, hapticSuccess } from '@/src/lib/haptics';
 import { blockTypeColor } from '@/src/theme/colors';

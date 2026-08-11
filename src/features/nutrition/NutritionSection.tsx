@@ -17,13 +17,13 @@ import { useThemeColors } from '@/src/theme/useThemeColors';
 
 import { EditNutritionItemSheet } from './EditNutritionItemSheet';
 import { NutritionMacroExplainSheet } from './NutritionMacroExplainSheet';
+import { localDateYmd } from '@/src/lib/date';
 import {
   apiMealTypeLabel,
   canExplainMetric,
   emptyQuickLogForm,
   formatMacroGrams,
   goalProgressPct,
-  localDateYmd,
   nutritionWebPath,
   quickLogHasContent,
   quickLogValidationError,

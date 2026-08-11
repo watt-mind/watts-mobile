@@ -13,13 +13,13 @@ import { NutritionAccents } from '@/src/theme/nutritionAccents';
 import { useThemeColors } from '@/src/theme/useThemeColors';
 
 import { NutritionMacroExplainSheet } from './NutritionMacroExplainSheet';
+import { localDateYmd } from '@/src/lib/date';
 import {
   canExplainMetric,
   formatMacroGrams,
   formatWindowTime,
   fuelStateLabel,
   goalProgressPct,
-  localDateYmd,
 } from './mapNutrition';
 import { hydrationPresetVolumes } from './mapNutritionSettings';
 import { DEFAULT_QUICK_ADD_VOLUMES } from './nutritionSettingsTypes';

@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { matchRemoteWorkout } from '../matchRemoteWorkout';
-import { localDateYmd } from '../mapToWellnessPayload';
+import { localDateYmd } from '@/src/lib/date';
 
 const ORIGINAL_TZ = process.env.TZ;
 
