@@ -40,7 +40,7 @@ When the coach-wattz PR merges, prefer that file for product/API narrative and k
 | UI | React Native + **NativeWind** (or adapted design tokens) |
 | Server state | **TanStack Query** |
 | Auth storage | **expo-secure-store** |
-| Local cache | MMKV and/or SQLite |
+| Local cache | **`@react-native-async-storage/async-storage`** behind `@tanstack/query-async-storage-persister` (`src/query/persist.ts`) — MMKV and SQLite are **not** used |
 | Push | **Expo Notifications** → APNs / FCM |
 | Observability | **Sentry React Native** |
 

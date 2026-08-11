@@ -15,18 +15,21 @@ Paths are path-only. Scheme form: `coachwatts://today`. HTTPS form: `https://coa
 | `/activities` | `/(app)/activity` | Recent activity list (root stack) |
 | `/activities/:id` | `/(app)/activity/:id` | Activity summary (root stack) |
 | `/upcoming` | `/(app)/upcoming` | Upcoming planned list (root stack) |
+| `/paywall`, `/upgrade` | `/(app)/paywall` | Contextual upgrade sheet (root stack — Back returns to the blocked screen). Allowlisted query params `feature`, `source`, `tier` survive resolution (`PAYWALL_QUERY_KEYS`), so a quota-limit push can open it with the right copy/analytics context |
+| `/plan`, `/plans` | `/(app)/(tabs)/plan` | Plan tab |
 | `/events` | `/(app)/events` | Upcoming race/life events list (root stack) |
 | `/events/:id` | `/(app)/events/:id` | Lite read-only event detail (root stack) |
 | `/coach` | `/(app)/(tabs)/coach` | Coach tab (session policy picks/creates room) |
 | `/chat` | `/(app)/(tabs)/coach` | Alias for Coach tab |
 | `/chat/:roomId` | `/(app)/(tabs)/coach?roomId=` | Opens that chat room when it exists |
 | `/notifications` | `/(app)/(tabs)/more/notifications` | Inbox (More stack) |
+| `/scan-meal`, `/camera`, `/log/camera`, `/log/scan-meal` | `/(app)/(tabs)/log?action=camera&t=` | Log tab with the one-shot photo-meal camera intent (`logCameraHref()` — the unique `t` stops relaunches being deduped) |
 | `/log` | `/(app)/(tabs)/log` | Optional convenience |
 | `/more` | `/(app)/(tabs)/more` | More tab root |
 | `/oauth/callback` | — | Handled by expo-auth-session; **not** rewritten |
 | `/e2e/login` | — | **Maestro / local only.** Queues fixture login (`+native-intent` → mint `POST /api/__e2e/token`); not a product route. Scheme: `coachwatts://e2e/login?email=&instance=` (defaults in [`e2eLoginDeepLink.ts`](../src/auth/e2eLoginDeepLink.ts)). Host allowlist applies. Do not host as a universal link. Harness pitfalls (wrong Metro, loopback tunnel, Open sheet): [e2e.md — What to look for](./e2e.md#what-to-look-for-maestro--dev-client-harness). |
 
-Source of truth in code: [`src/linking/pathMap.ts`](../src/linking/pathMap.ts), resolver [`src/linking/resolveDeepLink.ts`](../src/linking/resolveDeepLink.ts). E2E login parser: [`src/auth/e2eLoginDeepLink.ts`](../src/auth/e2eLoginDeepLink.ts).
+Source of truth in code: path → Expo Router resolution lives in [`src/linking/resolveDeepLink.ts`](../src/linking/resolveDeepLink.ts) — that resolver is what this table mirrors. The hrefs it returns come from [`src/linking/appHrefs.ts`](../src/linking/appHrefs.ts) (`APP_HREFS`, `paywallHref` / `PAYWALL_QUERY_KEYS`, `logCameraHref`). [`src/linking/pathMap.ts`](../src/linking/pathMap.ts) owns only the link **constants** — `APP_SCHEME`, the `/go` universal-link prefix, `OAUTH_CALLBACK_PATH`, and `PUSH_TYPE_DEFAULT_PATHS`; the path table in its header comment is illustrative and not exhaustive. E2E login parser: [`src/auth/e2eLoginDeepLink.ts`](../src/auth/e2eLoginDeepLink.ts).
 
 ## Push payload alignment
 
