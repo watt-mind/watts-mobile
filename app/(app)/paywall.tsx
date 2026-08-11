@@ -90,7 +90,11 @@ export default function PaywallScreen() {
   return (
     <>
       <Stack.Screen options={{ title: 'Upgrade' }} />
-      <SafeAreaView edges={{ bottom: true }} style={{ flex: 1, backgroundColor: theme.surface }}>
+      <SafeAreaView
+        testID="paywall-screen"
+        edges={{ bottom: true }}
+        style={{ flex: 1, backgroundColor: theme.surface }}
+      >
         <ScrollView
           ref={scrollRef}
           className="flex-1 bg-surface"

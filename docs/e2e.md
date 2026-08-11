@@ -96,13 +96,28 @@ Keep this table honest when you add or remove IDs.
 | `coach-composer` / `coach-send` | Chat composer | `flow-coach-compose` |
 | `more-screen` | More tab | shell, more hubs |
 | `more-athlete-profile` / `more-settings` / `more-health-sync` | More / Settings hubs | `flow-more-hubs` |
-| `more-subscription` | More → Account → Subscription | (reserved) |
+| `more-subscription` | More → Account → Subscription | `more-subscription` |
 | `more-invite-friends` | More → Account → Invite a friend (hosted/local) | `more-invite` |
 | `today-greeting-name` | Today greeting → Athlete | `today-athlete`, `flow-more-hubs` |
 | `athlete-sports` / `settings-sports` | Sports & thresholds entries (Athlete + Settings) | `today-athlete` |
 | `invite-screen` / `invite-qr` / `invite-code` / `invite-share` | Invite share surface | `more-invite` |
 | `athlete-screen` / `settings-screen` | Stack screens | `flow-more-hubs` |
+| `subscription-screen` | Subscription / billing screen root | `more-subscription` |
+| `subscription-billing-support` | "Need help with billing?" link (renders on every tier) | `more-subscription` |
+| `subscription-restore` | `RestoreRow` CTA — **store-gated**, see note below | `more-subscription` (optional assert) |
+| `paywall-screen` | Contextual paywall root (`app/(app)/paywall.tsx`) | (reserved; store-gated) |
+| `subscription-plan-chooser` | `PlanChooser` container — **store-gated** | (reserved; store-gated) |
+| `subscription-plan-<tier>-<period>` (+ `-cta`) | Per-package card and its buy button, e.g. `subscription-plan-pro-annual` | (reserved; store-gated) |
+| `quota-limit-card` | `QuotaLimitCard` plan-limit state | (reserved; quota-exhausted fixture) |
 | `finish-setup-card` | Activation card on Today | (reserved; incomplete-activation fixture) |
+
+**Store-gated IDs.** `RestoreRow`, `PlanChooser` and the paywall's plan section mount only when
+`canAcquireNativeSubscription()` is true, which requires the **official hosted instance**
+(`https://coachwatts.com`) — see `src/features/subscriptions/gating.ts`. The e2e harness authenticates
+against `http://<host>:3199`, so these never render in a Maestro run. `more-subscription` therefore
+asserts `subscription-restore` with `optional: true` and gates on `subscription-billing-support`,
+which is unconditional. The remaining store-gated IDs are the surface a future purchase flow
+(interactive App Store / Play sandbox, out of scope for CI) would build on.
 
 ### File / flow naming
 
@@ -396,6 +411,7 @@ OpenSpec: `openspec/changes/e2e-deeplink-login/`.
 | `maestro/scenarios/more-hubs.yaml` | More → profile / Settings → health source | On | Scenario |
 | `maestro/scenarios/today-athlete.yaml` | Today name → Athlete → Sports & thresholds | On | Scenario |
 | `maestro/scenarios/more-invite.yaml` | More → Invite a friend QR / share | On | Scenario |
+| `maestro/scenarios/more-subscription.yaml` | More → Subscription screen renders (read-only; no purchase) | On | Scenario |
 | `maestro/scenarios/deeplink-*.yaml` | Scheme deep links | On | Scenario |
 | `maestro/flow-wellness-save.yaml` | Wellness save (mutation; reset after) | On | Isolated wipe |
 | `maestro/flow-recommendation-accept.yaml` | Accept recommendation when CTA present | On | Isolated wipe |
@@ -409,7 +425,7 @@ These stay manual or store-sandbox. Unauth smoke already proves login chrome; do
 |------|---------------|-------|
 | System-browser PKCE | Sign in on a non-e2e build against `:3099` or hosted | Real ASWebAuthenticationSession / Chrome Custom Tabs |
 | HealthKit / Health Connect | Settings → Health Sync → grant / deny | OS permission sheet; simulator Health data optional |
-| Store IAP (RevenueCat) | Sandbox Apple / Play license testers | OpenSpec `store-subscriptions-revenuecat` task 7.3; unit-test adapters |
+| Store IAP (RevenueCat) | Sandbox Apple / Play license testers | OpenSpec `store-subscriptions-revenuecat` task 7.3; unit-test adapters. Maestro `more-subscription` covers navigation + rendered chrome only — purchase/restore need an interactive sandbox account and a hosted-instance login, so they cannot run headless |
 | Barcode camera permission + real product scan | Fresh install/device → Log Meal → Search Food → Scan | Maestro covers scanner open/cancel; verify OS permission and barcode recognition manually |
 | Push permission denial | Fresh install → deny notifications | Inbox still reachable from More |
 | Full activation wizard | Incomplete-activation athlete (not e2e happy-path) | consent → goal → plan → insight → connect; add Maestro after activation `testID`s |

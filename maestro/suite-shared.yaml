@@ -24,6 +24,8 @@ tags:
 - runFlow: subflows/reset-to-today.yaml
 - runFlow: scenarios/more-invite.yaml
 - runFlow: subflows/reset-to-today.yaml
+- runFlow: scenarios/more-subscription.yaml
+- runFlow: subflows/reset-to-today.yaml
 - runFlow: scenarios/settings-account-deletion.yaml
 - runFlow: subflows/reset-to-today.yaml
 - runFlow: scenarios/deeplink-today.yaml

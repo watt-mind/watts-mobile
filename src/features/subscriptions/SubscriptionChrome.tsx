@@ -77,6 +77,7 @@ export function RestoreRow({
         Already subscribed on Apple ID or Google Play?
       </Text>
       <Pressable
+        testID="subscription-restore"
         accessibilityRole="button"
         accessibilityLabel="Restore purchases"
         accessibilityState={{ disabled, busy: restoring }}
