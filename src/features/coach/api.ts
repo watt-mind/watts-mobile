@@ -141,6 +141,10 @@ export async function uploadChatImage(file: {
   const response = await apiFetch('/api/storage/upload', {
     method: 'POST',
     body: form,
+    // Image attachments are an optional capability, same as dictation above. Older
+    // self-hosted instances still gate this route on a cookie session and reject Bearer
+    // auth — a 401 here must not invalidate an otherwise valid session (CW-460).
+    softUnauthorized: true,
   });
   if (!response.ok) {
     let message = `Upload failed (${response.status})`;
