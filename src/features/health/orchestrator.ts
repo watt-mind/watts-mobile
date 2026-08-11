@@ -9,6 +9,7 @@ import {
   completeLedgerPending,
   completeLedgerFailure,
   completeLedgerSuccess,
+  isWorkoutLedgerConverged,
   seedNeedsSync,
   wellnessLedgerId,
   workoutLedgerId,
@@ -104,6 +105,8 @@ export type SyncPassResult = {
   workoutsSynced: number;
   workoutsFailed: number;
   workoutsPending: number;
+  /** Workouts given up on after repeated unresolved queued rounds (CW-463). */
+  workoutsAbandoned: number;
   wellnessPassError: boolean;
   workoutPassError: boolean;
   /** False when the platform store returned no usable data at all (e.g. iOS silently denied reads). */
@@ -117,6 +120,8 @@ export type SyncPassResult = {
 /** Stop auto-retrying an item after this many failed attempts (manual retry still works). */
 const MAX_AUTO_SYNC_ATTEMPTS = 5;
 const QUEUED_RETRY_AFTER_MS = 30 * 60 * 1000;
+/** Give up on a workout the server keeps queueing without an id after this many rounds. */
+const MAX_PENDING_UPLOAD_ROUNDS = 3;
 
 function emptyResult(partial: Partial<SyncPassResult> & { skipped: boolean }): SyncPassResult {
   return {
@@ -127,6 +132,7 @@ function emptyResult(partial: Partial<SyncPassResult> & { skipped: boolean }): S
     workoutsSynced: 0,
     workoutsFailed: 0,
     workoutsPending: 0,
+    workoutsAbandoned: 0,
     wellnessPassError: false,
     workoutPassError: false,
     foundLocalData: false,
@@ -216,14 +222,14 @@ async function syncWorkoutSession(
   remotes: Awaited<ReturnType<typeof fetchRemoteWorkoutsForMatch>>,
   force = false,
   generation?: number,
-): Promise<'synced' | 'pending' | 'failed' | 'skipped' | 'cancelled'> {
+): Promise<'synced' | 'pending' | 'abandoned' | 'failed' | 'skipped' | 'cancelled'> {
   if (generation !== undefined && !isHealthSyncGenerationCurrent(generation)) return 'cancelled';
 
   const id = workoutLedgerId(session.platformSessionId);
   const existing = await getLedgerItem(id);
 
   // Already uploaded/matched — converge without re-upload unless forced.
-  if (!force && existing?.status === 'synced' && existing.remoteWorkoutId) {
+  if (!force && isWorkoutLedgerConverged(existing)) {
     return 'skipped';
   }
 
@@ -247,10 +253,25 @@ async function syncWorkoutSession(
     return 'synced';
   }
 
-  if (!force && existing?.status === 'pending' && existing.lastAttemptAt) {
-    const queuedAt = new Date(existing.lastAttemptAt).getTime();
-    if (Number.isFinite(queuedAt) && Date.now() - queuedAt < QUEUED_RETRY_AFTER_MS) {
-      return 'pending';
+  if (!force && existing?.status === 'pending') {
+    // A queued item that never resolves must not pin the watermark forever:
+    // give up after a bounded number of rounds, record why, and let the pass
+    // move on (manual Retry still forces another attempt) — see CW-463.
+    if (existing.attemptCount >= MAX_PENDING_UPLOAD_ROUNDS) {
+      const abandoned = completeLedgerFailure(
+        existing,
+        `Server accepted the workout but never returned an id (${existing.attemptCount} attempts). Tap Retry to try again.`,
+      );
+      if (generation !== undefined && !isHealthSyncGenerationCurrent(generation))
+        return 'cancelled';
+      await saveLedgerItem(abandoned);
+      return 'abandoned';
+    }
+    if (existing.lastAttemptAt) {
+      const queuedAt = new Date(existing.lastAttemptAt).getTime();
+      if (Number.isFinite(queuedAt) && Date.now() - queuedAt < QUEUED_RETRY_AFTER_MS) {
+        return 'pending';
+      }
     }
   }
 
@@ -284,6 +305,15 @@ async function syncWorkoutSession(
     const result = await uploadPlatformWorkout(session);
     if (generation !== undefined && !isHealthSyncGenerationCurrent(generation)) return 'cancelled';
     if (result.queued && !result.remoteWorkoutId) {
+      if (result.duplicate) {
+        // The server already holds this workout — it just did not hand back an
+        // id (e.g. the duplicate belongs to another source). Treat it as
+        // converged instead of re-uploading it every 30 min forever (CW-463).
+        item = completeLedgerSuccess(item, { serverDuplicateNoId: true });
+        await saveLedgerItem(item);
+        await markHealthSyncSuccess(item.lastSuccessAt);
+        return 'synced';
+      }
       item = completeLedgerPending(item);
       await saveLedgerItem(item);
       return 'pending';
@@ -420,7 +450,7 @@ export async function runHealthSyncPass(
               }),
             );
           }
-          if (existing?.status === 'synced' && existing.remoteWorkoutId && !force) continue;
+          if (!force && isWorkoutLedgerConverged(existing)) continue;
           const status = await syncWorkoutSession(session, remotes, force, generation);
           if (status === 'skipped') continue;
           if (status === 'cancelled') {
@@ -430,6 +460,9 @@ export async function runHealthSyncPass(
           result.workoutsAttempted += 1;
           if (status === 'synced') result.workoutsSynced += 1;
           else if (status === 'pending') result.workoutsPending += 1;
+          // An abandoned item is terminal and recorded on its own ledger row —
+          // it deliberately does not block watermark advancement (CW-463).
+          else if (status === 'abandoned') result.workoutsAbandoned += 1;
           else result.workoutsFailed += 1;
         }
         // Same rule as wellness: only advance once the read actually returned
@@ -460,6 +493,57 @@ export async function runHealthSyncPass(
   });
 
   return inFlight;
+}
+
+/** Hard cap on how far back a manual retry may widen the platform read. */
+const MAX_RETRY_LOOKBACK_DAYS = 400;
+
+/** Parse a ledger anchor (`YYYY-MM-DD` local date or ISO timestamp) as a local day. */
+function parseLedgerAnchor(anchor: string): Date | null {
+  const ymd = /^(\d{4})-(\d{2})-(\d{2})$/.exec(anchor);
+  if (ymd) {
+    return new Date(Number(ymd[1]), Number(ymd[2]) - 1, Number(ymd[3]));
+  }
+  const parsed = new Date(anchor);
+  return Number.isFinite(parsed.getTime()) ? parsed : null;
+}
+
+/**
+ * Lookback a manual retry needs so the platform read actually reaches the item's
+ * own date. The ledger keeps 90 wellness days / 100 workouts, far beyond the
+ * 14-day pass lookback, so retrying an older item used to read a window that
+ * could never contain it and always threw "No on-device metrics for that day"
+ * (CW-462). Readers treat `lookbackDays` as the floor of their window, so
+ * widening it here is enough for both HealthKit and Health Connect.
+ */
+export function retryLookbackDays(anchor: string | undefined, now: Date = new Date()): number {
+  if (!anchor) return LOOKBACK_DAYS;
+  const anchorDate = parseLedgerAnchor(anchor);
+  if (!anchorDate) return LOOKBACK_DAYS;
+  const startOfAnchor = new Date(anchorDate);
+  startOfAnchor.setHours(0, 0, 0, 0);
+  const startOfToday = new Date(now);
+  startOfToday.setHours(0, 0, 0, 0);
+  const days =
+    Math.floor((startOfToday.getTime() - startOfAnchor.getTime()) / (24 * 60 * 60 * 1000)) + 1;
+  if (!Number.isFinite(days)) return LOOKBACK_DAYS;
+  // +1 day of slack so a session started near local midnight stays inside.
+  return Math.min(MAX_RETRY_LOOKBACK_DAYS, Math.max(LOOKBACK_DAYS, days + 1));
+}
+
+/**
+ * Fail a manual retry *visibly*: the reason is written to the item's lastError
+ * so the Sync history row explains itself, and re-thrown so the caller can
+ * surface it too. Without this, precondition failures were invisible — the user
+ * tapped Retry, felt an error haptic, and nothing on screen ever changed.
+ */
+async function failLedgerItemWith(item: SyncLedgerItem, message: string): Promise<never> {
+  try {
+    await saveLedgerItem(completeLedgerFailure(item, message));
+  } catch {
+    // Persisting the reason is best-effort — the throw below still surfaces it.
+  }
+  throw new Error(message);
 }
 
 async function throwLedgerFailure(id: string): Promise<never> {
@@ -508,11 +592,13 @@ async function retryLedgerItemImpl(id: string): Promise<void> {
   if (!item) throw new Error('Sync item not found');
 
   if (item.kind === 'wellness') {
-    if (!item.localDate) throw new Error('Missing wellness date');
-    const samples = await readPlatformWellness({ lookbackDays: LOOKBACK_DAYS });
+    if (!item.localDate) throw await failLedgerItemWith(item, 'Missing wellness date');
+    // Widen the read so it covers this item's own day, not just the pass window.
+    const lookbackDays = retryLookbackDays(item.localDate);
+    const samples = await readPlatformWellness({ lookbackDays });
     const sample = samples.find((s) => s.date === item.localDate);
     if (!sample || !sampleHasMetrics(sample)) {
-      throw new Error('No on-device metrics for that day');
+      throw await failLedgerItemWith(item, 'No on-device metrics for that day');
     }
     const status = await syncWellnessSample(sample, true, generation);
     if (status === 'failed') await throwLedgerFailure(id);
@@ -522,13 +608,14 @@ async function retryLedgerItemImpl(id: string): Promise<void> {
   if (!prefs.syncWorkouts) {
     throw new Error('Enable Sync workouts first');
   }
-  const sessions = await readPlatformWorkouts({ lookbackDays: LOOKBACK_DAYS });
+  const lookbackDays = retryLookbackDays(item.startedAt);
+  const sessions = await readPlatformWorkouts({ lookbackDays });
   const sessionId = id.replace(/^workout:/, '');
   const session = sessions.find((s) => s.platformSessionId === sessionId);
-  if (!session) throw new Error('Workout no longer on device');
-  const remotes = await fetchRemoteWorkoutsForMatch(LOOKBACK_DAYS);
+  if (!session) throw await failLedgerItemWith(item, 'Workout no longer on device');
+  const remotes = await fetchRemoteWorkoutsForMatch(lookbackDays);
   const status = await syncWorkoutSession(session, remotes, true, generation);
-  if (status === 'failed') await throwLedgerFailure(id);
+  if (status === 'failed' || status === 'abandoned') await throwLedgerFailure(id);
 }
 
 /**
@@ -555,7 +642,7 @@ async function syncWorkoutByPlatformSessionIdImpl(
   const remotes = await fetchRemoteWorkoutsForMatch(LOOKBACK_DAYS);
   const force = options.force === true;
   const status = await syncWorkoutSession(session, remotes, force, generation);
-  if (status === 'failed') {
+  if (status === 'failed' || status === 'abandoned') {
     await throwLedgerFailure(workoutLedgerId(platformSessionId));
   }
 }
@@ -570,6 +657,29 @@ export type SyncUnsyncedWorkoutsResult = {
 /** Sync only inventory rows that are needs_sync / failed / pending. */
 export async function syncUnsyncedWorkouts(): Promise<SyncUnsyncedWorkoutsResult> {
   return trackManualSync(syncUnsyncedWorkoutsImpl());
+}
+
+const UNREADABLE_WORKOUT_ERROR = 'Workout is no longer readable on this device';
+
+/** Write the reason a listed workout could not be re-read onto its ledger row. */
+async function recordUnreadableWorkout(
+  row: { platformSessionId: string; platform: HealthPlatform; title: string; startedAt: string },
+  generation: number,
+): Promise<void> {
+  if (!isHealthSyncGenerationCurrent(generation)) return;
+  const id = workoutLedgerId(row.platformSessionId);
+  const existing = await getLedgerItem(id);
+  const item =
+    existing ??
+    seedNeedsSync('workout', {
+      id,
+      kind: 'workout',
+      platform: row.platform,
+      title: row.title,
+      startedAt: row.startedAt,
+    });
+  if (!isHealthSyncGenerationCurrent(generation)) return;
+  await saveLedgerItem(completeLedgerFailure(item, UNREADABLE_WORKOUT_ERROR));
 }
 
 async function syncUnsyncedWorkoutsImpl(): Promise<SyncUnsyncedWorkoutsResult> {
@@ -597,6 +707,10 @@ async function syncUnsyncedWorkoutsImpl(): Promise<SyncUnsyncedWorkoutsResult> {
     result.attempted += 1;
     if (!session) {
       result.failed += 1;
+      // Record *why* on the row itself — otherwise "Sync all" reports that some
+      // workouts could not be synced while every row still reads needs_sync
+      // with no explanation (CW-465).
+      await recordUnreadableWorkout(row, generation);
       continue;
     }
     const status = await syncWorkoutSession(session, remotes, true, generation);

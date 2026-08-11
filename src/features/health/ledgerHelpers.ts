@@ -62,7 +62,12 @@ export function beginLedgerAttempt(
 
 export function completeLedgerSuccess(
   item: SyncLedgerItem,
-  opts: { remoteWorkoutId?: string; contentFingerprint?: string; at?: string } = {},
+  opts: {
+    remoteWorkoutId?: string;
+    contentFingerprint?: string;
+    serverDuplicateNoId?: boolean;
+    at?: string;
+  } = {},
 ): SyncLedgerItem {
   const at = opts.at ?? new Date().toISOString();
   return {
@@ -72,15 +77,35 @@ export function completeLedgerSuccess(
     lastAttemptAt: at,
     lastError: undefined,
     remoteWorkoutId: opts.remoteWorkoutId ?? item.remoteWorkoutId,
+    serverDuplicateNoId: opts.serverDuplicateNoId ?? item.serverDuplicateNoId,
     contentFingerprint: opts.contentFingerprint ?? item.contentFingerprint,
   };
 }
 
+/**
+ * A workout item is converged when the server demonstrably holds it: either we
+ * recorded its remote id, or the server told us it was a duplicate without one
+ * (CW-463). Converged items are not re-uploaded by later passes.
+ */
+export function isWorkoutLedgerConverged(item: SyncLedgerItem | undefined): boolean {
+  if (!item || item.status !== 'synced') return false;
+  return !!item.remoteWorkoutId || item.serverDuplicateNoId === true;
+}
+
+/**
+ * Mark an item failed. An item that is already `synced` is never downgraded —
+ * its data is on the server, and flipping it to `failed` (e.g. from an
+ * unrelated pass-level error) would show a bogus "Failed" row with a Retry
+ * button for work that actually succeeded (CW-461). A genuine re-upload
+ * attempt always goes through beginLedgerAttempt first, so it is `syncing`
+ * by the time it can fail here.
+ */
 export function completeLedgerFailure(
   item: SyncLedgerItem,
   error: string,
   at: string = new Date().toISOString(),
 ): SyncLedgerItem {
+  if (item.status === 'synced') return item;
   return {
     ...item,
     status: 'failed',

@@ -1,7 +1,7 @@
 import { Platform } from 'react-native';
 
 import { HEALTHKIT_BACKGROUND_DELIVERY_TYPES } from './syncPermissions';
-import type { HealthPlatform, SyncLedgerItem } from './types';
+import type { SyncDiagnosticScope } from './syncDiagnostics';
 
 export const HEALTH_SYNC_TASK = 'COACH_WATTS_HEALTH_SYNC';
 
@@ -31,32 +31,25 @@ function logErrorToSentry(err: unknown, context: string): void {
   }
 }
 
-export async function recordBackgroundSyncFailure(errorReason: string): Promise<void> {
+/**
+ * Record a pass-level / platform-level background failure.
+ *
+ * These failures belong to the *pass*, not to any one day's data, so they are
+ * written to the standalone diagnostic slot instead of today's wellness ledger
+ * entry. Attributing them to `wellness:<today>` used to flag a day that had
+ * actually synced fine as "Failed" with a Retry button that retried nothing
+ * relevant (CW-461). Per-item upload failures are still recorded on their own
+ * ledger entry by the orchestrator.
+ */
+export async function recordBackgroundSyncFailure(
+  errorReason: string,
+  scope: SyncDiagnosticScope = 'background_task',
+): Promise<void> {
   try {
-    const { getLedgerItem, saveLedgerItem } = await import('./ledger');
-    const { seedNeedsSync, completeLedgerFailure, wellnessLedgerId } =
-      await import('./ledgerHelpers');
-    const { localDateYmd, wellnessHistoryTitle } = await import('./mapToWellnessPayload');
-
-    const today = localDateYmd(new Date());
-    const id = wellnessLedgerId(today);
-    const existing = await getLedgerItem(id);
-    const platform: HealthPlatform = Platform.OS === 'ios' ? 'healthkit' : 'health_connect';
-
-    let item: SyncLedgerItem =
-      existing ??
-      seedNeedsSync('wellness', {
-        id,
-        kind: 'wellness',
-        platform,
-        title: wellnessHistoryTitle(today),
-        localDate: today,
-      });
-
-    item = completeLedgerFailure(item, errorReason);
-    await saveLedgerItem(item);
-  } catch (ledgerErr) {
-    console.warn('[HealthSync] Failed to record failure in syncLedger', ledgerErr);
+    const { recordSyncDiagnostic } = await import('./syncDiagnostics');
+    await recordSyncDiagnostic(scope, errorReason);
+  } catch (diagErr) {
+    console.warn('[HealthSync] Failed to record background failure diagnostic', diagErr);
   }
 }
 
@@ -102,7 +95,7 @@ export function defineHealthSyncBackgroundTask(): void {
 
           if (result.wellnessPassError || result.workoutPassError) {
             logErrorToSentry(new Error(errorReason), 'Background health sync pass error');
-            await recordBackgroundSyncFailure(errorReason);
+            await recordBackgroundSyncFailure(errorReason, 'sync_pass');
           }
           return BackgroundTask.BackgroundTaskResult.Failed;
         }
@@ -112,7 +105,7 @@ export function defineHealthSyncBackgroundTask(): void {
           err instanceof Error ? err.message : 'Background health sync task exception';
         console.warn('[HealthSync] background task failed', message);
         logErrorToSentry(err, 'Background health sync task exception');
-        await recordBackgroundSyncFailure(message);
+        await recordBackgroundSyncFailure(message, 'background_task');
         return BackgroundTask.BackgroundTaskResult.Failed;
       }
     });
@@ -166,7 +159,10 @@ async function drainHealthConnectChanges(): Promise<boolean> {
     const message = err instanceof Error ? err.message : 'HC getChanges failed';
     console.warn('[HealthSync] HC getChanges failed', message);
     logErrorToSentry(err, 'Health Connect drain changes error');
-    await recordBackgroundSyncFailure(`Health Connect changes drain error: ${message}`);
+    await recordBackgroundSyncFailure(
+      `Health Connect changes drain error: ${message}`,
+      'health_connect_changes',
+    );
     return false;
   }
 }
