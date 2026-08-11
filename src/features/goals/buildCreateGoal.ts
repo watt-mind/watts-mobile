@@ -1,4 +1,5 @@
 import { addLocalMonthsYmd, isValidCalendarYmd } from '@/src/features/log/mapLogForm';
+import { ymdToWireDate } from '@/src/lib/wireDate';
 
 import type { CreateGoalInput, GoalType } from './types';
 
@@ -16,10 +17,6 @@ export type GoalCreateFormValues = {
 
 export function defaultGoalTargetDateYmd(monthsAhead = 3): string {
   return addLocalMonthsYmd(monthsAhead);
-}
-
-export function ymdToIsoNoon(ymd: string): string {
-  return new Date(`${ymd}T12:00:00.000Z`).toISOString();
 }
 
 export function validateGoalCreateForm(values: GoalCreateFormValues): string | null {
@@ -42,7 +39,7 @@ export function validateGoalCreateForm(values: GoalCreateFormValues): string | n
 /** Build Bearer POST body; EVENT always includes eventData (server requires a linked event). */
 export function buildCreateGoalInput(values: GoalCreateFormValues): CreateGoalInput {
   const title = values.title.trim();
-  const dateIso = ymdToIsoNoon(values.targetDate.trim());
+  const dateIso = ymdToWireDate(values.targetDate.trim());
   const base: CreateGoalInput = {
     type: values.type,
     title,

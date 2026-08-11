@@ -15,6 +15,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:tz": "TZ=America/New_York vitest run && TZ=Pacific/Auckland vitest run",
     "test:e2e": "node scripts/run-maestro-e2e.mjs maestro",
     "test:e2e:shared": "node scripts/run-maestro-e2e.mjs maestro/suite-shared.yaml",
     "test:e2e:isolated": "node scripts/run-maestro-e2e.mjs maestro/smoke-unauth.yaml maestro/flow-wellness-save.yaml maestro/flow-recommendation-accept.yaml",
