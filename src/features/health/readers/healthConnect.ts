@@ -6,6 +6,7 @@ import type { DailyWellnessSample, HealthReadWindow, PlatformWorkoutSession } fr
 import { LOOKBACK_DAYS } from '../types';
 import {
   bucketHealthConnectSleep,
+  clipHcSleepSessionToWindow,
   dayWindowLocal,
   sleepWindowForDate,
   type HcSleepSession,
@@ -157,8 +158,14 @@ export async function readHealthConnectWellness(
       if (!r.startTime || !r.endTime) continue;
       const start = new Date(r.startTime).getTime();
       const end = new Date(r.endTime).getTime();
-      if (end < sleepWin.start.getTime() || start > sleepWin.end.getTime()) continue;
-      sleepIntervals.push({ start, end, stages: r.stages });
+      // Clipped, not just filtered: a session crossing the noon boundary is
+      // split between the two dates instead of counted in full on both (CW-480).
+      const clipped = clipHcSleepSessionToWindow(
+        { start, end, stages: r.stages },
+        sleepWin.start.getTime(),
+        sleepWin.end.getTime(),
+      );
+      if (clipped) sleepIntervals.push(clipped);
     }
 
     const sleepBucket = bucketHealthConnectSleep(sleepIntervals);
