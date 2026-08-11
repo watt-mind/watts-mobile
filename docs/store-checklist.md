@@ -66,6 +66,41 @@ Rows are gated on non-empty constants in `src/features/account/paths.ts`.
 
 See [.env.example](../.env.example).
 
+### What is reported, and what is not (CW-510)
+
+Local dev sessions used to ship errors straight into the production Sentry
+project, where the Sentry → Linear intake auto-filed a ticket for each one
+(CW-306, CW-308, CW-309, CW-454 were all single-event, single-user reports from
+a developer's own machine — mostly Metro Fast Refresh artefacts). The decision
+logic now lives in `src/lib/sentryFilter.ts` and is wired into `Sentry.init()`
+in `src/sentry.ts`:
+
+| Build / event | Reported? |
+| -- | -- |
+| `__DEV__` build (`pnpm ios` / `pnpm android` / Expo Go / dev client) | **No** — `enabled: false`, plus `beforeSend` drops it |
+| `EXPO_PUBLIC_SENTRY_ENVIRONMENT` of `development`, `dev`, `local`, `e2e`, `test` | **No** |
+| Metro Fast Refresh / HMR stacks (`metroHotUpdateModule`, `performReactRefresh`, `HMRClient`) | **No**, in every environment — never actionable |
+| `preview` (internal testers) and `production` builds | **Yes**, unchanged |
+
+The SDK is still initialised in dev builds, so every lazy
+`require('@sentry/react-native')` consumer keeps working — the transport is
+simply a no-op. To debug Sentry wiring locally, run a build with
+`EXPO_PUBLIC_SENTRY_ENVIRONMENT=preview` **and** a non-dev (release) binary.
+
+Two Sentry-console settings still need a human with org access:
+
+- [ ] Filter the Sentry → Linear intake to `environment: production` (plus any
+      staging env), so a stray dev event can never auto-file a ticket even if a
+      future build bypasses the client-side gate.
+- [ ] Un-scrub `component_stack` in the project's data-scrubbing settings — it
+      is currently arriving as `"[Filtered]"`, removing the one field that names
+      the offending React component (this is why CW-454 could not be specified).
+      If it is scrubbed on purpose, record that decision here instead.
+
+Note that `pnpm ios` / `pnpm android` set `SENTRY_DISABLE_AUTO_UPLOAD=true`, so
+locally built binaries have no source maps and any event from them would be
+unsymbolicated anyway — another reason dev events are not worth ingesting.
+
 ## Account glue (More)
 
 - [x] Instance URL visible
