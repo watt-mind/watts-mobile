@@ -17,6 +17,7 @@
         "ITSAppUsesNonExemptEncryption": false,
         "NSCameraUsageDescription": "Coach Watts uses the camera so you can photograph meals and share them in Coach chat for nutrition logging.",
         "NSPhotoLibraryUsageDescription": "Coach Watts accesses your photo library so you can attach meal photos in Coach chat for nutrition logging.",
+        "NSPhotoLibraryAddUsageDescription": "Coach Watts saves meal photos you capture in the app to your photo library when you turn on Save Photos to Library.",
         "NSMicrophoneUsageDescription": "Coach Watts uses the microphone so you can dictate messages to Coach chat.",
         "NSHealthShareUsageDescription": "Coach Watts reads sleep, heart rate (incl. workout heart-rate and power/cadence/speed streams), HRV, body metrics, steps, distance, exercise minutes, floors, GPS workout routes, and workouts from Apple Health to prefill check-ins and, when you enable Health Sync, upload them to your Coach Watts instance.",
         "NSHealthUpdateUsageDescription": "Coach Watts does not write health data to Apple Health."
@@ -115,6 +116,15 @@
         {
           "photosPermission": "Coach Watts accesses your photo library so you can attach meal photos in Coach chat for nutrition logging.",
           "cameraPermission": "Coach Watts uses the camera so you can photograph meals and share them in Coach chat for nutrition logging."
+        }
+      ],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Coach Watts accesses your photo library so you can attach meal photos in Coach chat for nutrition logging.",
+          "savePhotosPermission": "Coach Watts saves meal photos you capture in the app to your photo library when you turn on Save Photos to Library.",
+          "granularPermissions": [],
+          "isAccessMediaLocationEnabled": false
         }
       ],
       [
