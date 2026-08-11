@@ -296,6 +296,9 @@ export function PlanTrainingSegment({
       type: item.type,
       durationSec: item.durationSec,
       tss: item.tss,
+      // Only forwarded when the list row actually carried one; the editor omits absent
+      // fields from the patch rather than sending null (CW-486).
+      ...(item.description !== undefined ? { description: item.description } : {}),
       weekDayKeys: moveDayKeys,
     });
   };
