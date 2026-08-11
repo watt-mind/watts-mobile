@@ -8,6 +8,12 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['src/**/*.test.ts'],
+    // Deterministic local calendar for every run: without a pinned zone every
+    // local-date assertion silently depends on the developer's machine and
+    // passes on a UTC CI runner while failing in Auckland. `TZ=<zone> vitest
+    // run` (see the `test:tz` script) overrides it, and individual tests pin
+    // their own zone via `withTimeZone` from `src/test/timezone.ts`.
+    env: { TZ: process.env.TZ || 'UTC' },
   },
   resolve: {
     alias: {
