@@ -1,4 +1,11 @@
 import type { StreamSeries } from '@/src/features/activity/chartTypes';
+import {
+  elevationUnitLabel,
+  kmToDisplayDistance,
+  metersToDisplayElevation,
+} from '@/src/features/activity/mapActivity';
+import { distanceUnitLabel } from '@/src/features/profile/mapProfile';
+import type { DistanceUnits } from '@/src/features/profile/types';
 import { Colors } from '@/src/theme/colors';
 
 import type {
@@ -62,14 +69,22 @@ export function mapMonthlyComparisonPayload(json: unknown): MonthlyComparisonPay
   };
 }
 
-export function metricUnitLabel(metric: MonthlyMetric): string {
+/**
+ * The API always reports metric units (km / m). Distance and elevation are re-expressed
+ * in the athlete's `distanceUnits` preference here — before CW-491 this hard-coded 'km'
+ * and 'm' with no conversion, so a Miles athlete read a kilometre total labelled "km".
+ */
+export function metricUnitLabel(
+  metric: MonthlyMetric,
+  distanceUnits: DistanceUnits = 'Kilometers',
+): string {
   switch (metric) {
     case 'duration':
       return 'h';
     case 'distance':
-      return 'km';
+      return distanceUnitLabel(distanceUnits);
     case 'elevation':
-      return 'm';
+      return elevationUnitLabel(distanceUnits);
     case 'count':
       return '';
     default:
@@ -77,15 +92,32 @@ export function metricUnitLabel(metric: MonthlyMetric): string {
   }
 }
 
-export function formatMetricValue(value: number, metric: MonthlyMetric): string {
-  const rounded = Math.round(value);
-  const label = metricUnitLabel(metric);
+/** Convert one raw (metric) payload value into the athlete's display unit. */
+export function toDisplayMetricValue(
+  value: number,
+  metric: MonthlyMetric,
+  distanceUnits: DistanceUnits = 'Kilometers',
+): number {
+  if (!Number.isFinite(value)) return 0;
+  if (metric === 'distance') return kmToDisplayDistance(value, distanceUnits);
+  if (metric === 'elevation') return metersToDisplayElevation(value, distanceUnits);
+  return value;
+}
+
+export function formatMetricValue(
+  value: number,
+  metric: MonthlyMetric,
+  distanceUnits: DistanceUnits = 'Kilometers',
+): string {
+  const rounded = Math.round(toDisplayMetricValue(value, metric, distanceUnits));
+  const label = metricUnitLabel(metric, distanceUnits);
   return label ? `${rounded.toLocaleString()}${label}` : rounded.toLocaleString();
 }
 
 export function summarizeMonthlyProgress(
   payload: MonthlyComparisonPayload,
   metric: MonthlyMetric,
+  distanceUnits: DistanceUnits = 'Kilometers',
 ): MonthlyProgressSummary {
   const currentAtToday = payload.currentCumulative[payload.todayDay];
   const lastAtToday = payload.lastCumulative[payload.todayDay];
@@ -95,12 +127,14 @@ export function summarizeMonthlyProgress(
     lastTotal === 0 ? (currentTotal > 0 ? 100 : 0) : ((currentTotal - lastTotal) / lastTotal) * 100;
 
   return {
+    // Totals stay in the payload's metric units; conversion happens at format time so
+    // there is exactly one conversion point.
     currentTotal,
     lastTotal,
     percentDiff,
-    unitLabel: metricUnitLabel(metric),
-    formattedCurrent: formatMetricValue(currentTotal, metric),
-    formattedLast: formatMetricValue(lastTotal, metric),
+    unitLabel: metricUnitLabel(metric, distanceUnits),
+    formattedCurrent: formatMetricValue(currentTotal, metric, distanceUnits),
+    formattedLast: formatMetricValue(lastTotal, metric, distanceUnits),
   };
 }
 
@@ -108,6 +142,7 @@ export function mapMonthlyChartSeries(
   payload: MonthlyComparisonPayload,
   metric: MonthlyMetric,
   viewMode: MonthlyViewMode,
+  distanceUnits: DistanceUnits = 'Kilometers',
 ): { series: StreamSeries[]; durationSec: number; endDay: number } {
   // Match web MonthlyComparisonCard: x-axis is days 1–31. Current month stops at
   // today; last month keeps the full curve so month-over-month shape is visible.
@@ -122,25 +157,32 @@ export function mapMonthlyChartSeries(
       viewMode === 'cumulative' ? payload.lastCumulative[day] : payload.lastDaily[day];
 
     if (currentPoint && day <= payload.todayDay) {
-      pointsCurrent.push({ x: day - 1, y: currentPoint[metric] });
+      pointsCurrent.push({
+        x: day - 1,
+        y: toDisplayMetricValue(currentPoint[metric], metric, distanceUnits),
+      });
     }
     if (lastPoint) {
-      pointsLast.push({ x: day - 1, y: lastPoint[metric] });
+      pointsLast.push({
+        x: day - 1,
+        y: toDisplayMetricValue(lastPoint[metric], metric, distanceUnits),
+      });
     }
   }
 
+  const seriesUnit = metricUnitLabel(metric, distanceUnits) || metric.toUpperCase();
   const series: StreamSeries[] = [
     {
       key: 'current',
       label: payload.currentMonthName,
-      unit: metricUnitLabel(metric) || metric.toUpperCase(),
+      unit: seriesUnit,
       color: Colors.brand,
       points: pointsCurrent,
     },
     {
       key: 'last',
       label: payload.lastMonthName,
-      unit: metricUnitLabel(metric) || metric.toUpperCase(),
+      unit: seriesUnit,
       color: Colors.textMuted,
       points: pointsLast,
     },

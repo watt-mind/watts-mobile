@@ -91,6 +91,53 @@ describe('mapWellnessOverview', () => {
   });
 });
 
+describe('weight units (CW-490)', () => {
+  const payload = {
+    date: '2026-07-18',
+    hrv: 40,
+    // The API always stores kilograms; 74.8 kg is the 165 lb the athlete typed.
+    weight: 74.8,
+    trends: {},
+  };
+
+  it('labels kilograms and leaves the value alone for a metric athlete', () => {
+    const overview = mapWellnessOverview(payload, { weightUnits: 'Kilograms' });
+    const weight = overview!.metrics.find((m) => m.key === 'weight')!;
+    expect(weight.value).toBe(74.8);
+    expect(weight.unit).toBe('kg');
+  });
+
+  it('converts to pounds and labels lbs for a Pounds athlete', () => {
+    const overview = mapWellnessOverview(payload, { weightUnits: 'Pounds' });
+    const weight = overview!.metrics.find((m) => m.key === 'weight')!;
+    expect(weight.value).toBe(164.9);
+    expect(weight.unit).toBe('lbs');
+  });
+
+  it('never emits a bare unitless weight (the CW-490 regression)', () => {
+    for (const weightUnits of ['Kilograms', 'Pounds'] as const) {
+      const weight = mapWellnessOverview(payload, { weightUnits })!.metrics.find(
+        (m) => m.key === 'weight',
+      )!;
+      expect(weight.unit).not.toBe('');
+    }
+  });
+
+  it('defaults to kilograms when no preference is supplied', () => {
+    const weight = mapWellnessOverview(payload)!.metrics.find((m) => m.key === 'weight')!;
+    expect(weight.value).toBe(74.8);
+    expect(weight.unit).toBe('kg');
+  });
+
+  it('still drops an implausible weight before converting', () => {
+    const overview = mapWellnessOverview(
+      { date: '2026-07-18', hrv: 40, weight: 74.8, previousWeight: 100, trends: {} },
+      { weightUnits: 'Pounds' },
+    );
+    expect(overview!.metrics.map((m) => m.key)).toEqual(['hrv']);
+  });
+});
+
 describe('heuristicCoachNote', () => {
   it('returns high-recovery guidance', () => {
     expect(

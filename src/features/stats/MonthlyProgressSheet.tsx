@@ -8,6 +8,7 @@ import { friendlyError } from '@/src/api/errors';
 import { useAuth } from '@/src/auth/AuthContext';
 import { LineSeriesChart } from '@/src/features/activity/charts/LineSeriesChart';
 import { openInstanceWeb } from '@/src/features/account/openInstanceWeb';
+import { useAthleteProfileQuery } from '@/src/features/profile/useProfile';
 
 import {
   dashboardWebPath,
@@ -38,9 +39,13 @@ export function MonthlyProgressSheet({
 
   const query = useMonthlyComparisonQuery(sport, visible);
   const sportsQuery = useWorkoutSportsQuery(visible);
+  const profileQuery = useAthleteProfileQuery();
+  const distanceUnits = profileQuery.data?.distanceUnits ?? 'Kilometers';
 
-  const summary = query.data ? summarizeMonthlyProgress(query.data, metric) : null;
-  const chart = query.data ? mapMonthlyChartSeries(query.data, metric, viewMode) : null;
+  const summary = query.data ? summarizeMonthlyProgress(query.data, metric, distanceUnits) : null;
+  const chart = query.data
+    ? mapMonthlyChartSeries(query.data, metric, viewMode, distanceUnits)
+    : null;
 
   const sportOptions = useMemo(() => {
     const list = sportsQuery.data || [];
@@ -183,7 +188,8 @@ export function MonthlyProgressSheet({
               </View>
               <Text className="mt-2 text-[11px] text-text-muted">
                 Totals use month-to-date through day {query.data.todayDay} (
-                {formatMetricValue(summary.currentTotal, metric)} vs last month same day).
+                {formatMetricValue(summary.currentTotal, metric, distanceUnits)} vs last month same
+                day).
               </Text>
             </>
           ) : null}

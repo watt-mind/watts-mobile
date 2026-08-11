@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
 import { LineSeriesChart } from '@/src/features/activity/charts/LineSeriesChart';
+import { useAthleteProfileQuery } from '@/src/features/profile/useProfile';
 
 import {
   formatDeltaPercent,
@@ -17,6 +18,8 @@ import { useMonthlyProgressMetric } from './useMonthlyProgressPreference';
 export function MonthlyProgressGlance() {
   const query = useMonthlyComparisonQuery('all');
   const { metric } = useMonthlyProgressMetric();
+  const profileQuery = useAthleteProfileQuery();
+  const distanceUnits = profileQuery.data?.distanceUnits ?? 'Kilometers';
   const [open, setOpen] = useState(false);
 
   if (query.isLoading && !query.data) {
@@ -34,8 +37,8 @@ export function MonthlyProgressGlance() {
     return null;
   }
 
-  const summary = summarizeMonthlyProgress(query.data, metric);
-  const chart = mapMonthlyChartSeries(query.data, metric, 'cumulative');
+  const summary = summarizeMonthlyProgress(query.data, metric, distanceUnits);
+  const chart = mapMonthlyChartSeries(query.data, metric, 'cumulative', distanceUnits);
   const deltaClass =
     summary.percentDiff > 0
       ? 'text-success'

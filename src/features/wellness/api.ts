@@ -1,9 +1,13 @@
 import { apiFetch } from '@/src/api/client';
+import type { WeightUnits } from '@/src/features/profile/types';
 
 import { mapWellnessOverview } from './mapWellnessOverview';
 import type { WellnessOverview } from './types';
 
-export async function fetchWellnessOverview(date: string): Promise<WellnessOverview | null> {
+export async function fetchWellnessOverview(
+  date: string,
+  weightUnits: WeightUnits = 'Kilograms',
+): Promise<WellnessOverview | null> {
   const response = await apiFetch(`/api/wellness/${encodeURIComponent(date)}`);
   if (response.status === 404) return null;
   if (!response.ok) {
@@ -18,5 +22,5 @@ export async function fetchWellnessOverview(date: string): Promise<WellnessOverv
     throw new Error('Invalid wellness response');
   }
   if (json == null) return null;
-  return mapWellnessOverview(json);
+  return mapWellnessOverview(json, { weightUnits });
 }
