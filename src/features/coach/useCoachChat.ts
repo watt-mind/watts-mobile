@@ -27,6 +27,7 @@ import {
 import { captureChatPhoto, pickChatImagesFromLibrary } from './attachments';
 import { CHAT_ROOMS_QUERY_KEY, chatMessagesQueryKey } from './chatQueryKeys';
 import { coachChatFetch, resolveChatMessagesApiUrl } from './coachFetch';
+import { feedbackOnSendStart } from './composerState';
 import {
   applyAssistantTextDelta,
   hasActiveTurn,
@@ -48,12 +49,14 @@ import { buildCoachSeedContext, buildSessionCoachSeedContext, withSeedPrefix } f
 import { takeSessionDiscuss } from './sessionDiscussStore';
 import { decideSessionOpen, findRoomById } from './sessionPolicy';
 import { shouldApplyStreamCallback } from './streamGeneration';
+import { classifyApprovalFailure } from './toolApproval';
 import {
   countAssistantMessages,
   shouldClearAwaitingTurnStart,
   shouldPollTurn,
   shouldStopTurnPolling,
 } from './turnPolling';
+import { nextReconnectDelayMs, shouldGiveUpReconnect, WS_CONNECT_TIMEOUT_MS } from './wsReconnect';
 import type {
   ChatRoomSummary,
   CoachUIMessage,
@@ -63,7 +66,6 @@ import type {
 
 const POLL_INTERVAL_MS = 1500;
 const POLL_GRACE_MS = 15000;
-const WS_RECONNECT_MS = 3000;
 const WS_PING_MS = 30000;
 
 export type UseCoachChatOptions = {
@@ -89,11 +91,15 @@ type UseCoachChatResult = {
   awaitingReply: boolean;
   isRealtimeConnected: boolean;
   usingPollFallback: boolean;
+  /** Realtime gave up after repeated failures — replies arrive by polling. */
+  realtimeUnavailable: boolean;
   error: string | null;
   sendError: string | null;
   /** Set when the reply was blocked by a plan limit rather than a failure. */
   sendQuota: QuotaInfo | null;
   notice: string | null;
+  /** Approvals already submitted this session — their cards must stay hidden. */
+  submittedApprovalIds: string[];
   send: (text?: string) => Promise<void>;
   applyStarter: (text: string) => void;
   resumeTurn: () => Promise<void>;
@@ -134,6 +140,8 @@ export function useCoachChat(options: UseCoachChatOptions = {}): UseCoachChatRes
   const [awaitingTurnStart, setAwaitingTurnStart] = useState(false);
   const [isRealtimeConnected, setIsRealtimeConnected] = useState(false);
   const [usingPollFallback, setUsingPollFallback] = useState(false);
+  const [realtimeUnavailable, setRealtimeUnavailable] = useState(false);
+  const [submittedApprovalIds, setSubmittedApprovalIds] = useState<string[]>([]);
   const [apiUrl, setApiUrl] = useState<string | null>(null);
   const [seedUsed, setSeedUsed] = useState(false);
 
@@ -145,6 +153,9 @@ export function useCoachChat(options: UseCoachChatOptions = {}): UseCoachChatRes
   const wsRef = useRef<WebSocket | null>(null);
   const wsReconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wsPingTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const wsConnectTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Consecutive failed connect attempts; reset the moment auth succeeds. */
+  const wsFailureCount = useRef(0);
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollGraceUntil = useRef(0);
   // Assistant-message count captured when the grace window was armed. A reply
@@ -487,6 +498,10 @@ export function useCoachChat(options: UseCoachChatOptions = {}): UseCoachChatRes
       clearTimeout(wsReconnectTimer.current);
       wsReconnectTimer.current = null;
     }
+    if (wsConnectTimeout.current) {
+      clearTimeout(wsConnectTimeout.current);
+      wsConnectTimeout.current = null;
+    }
     if (wsPingTimer.current) {
       clearInterval(wsPingTimer.current);
       wsPingTimer.current = null;
@@ -500,6 +515,25 @@ export function useCoachChat(options: UseCoachChatOptions = {}): UseCoachChatRes
 
   const connectWebSocketRef = useRef<() => Promise<void>>(async () => {});
 
+  /** Count a failed attempt and schedule the next one, or give up. */
+  const scheduleReconnect = useCallback(() => {
+    if (!activeRef.current) return;
+    wsFailureCount.current += 1;
+    if (shouldGiveUpReconnect(wsFailureCount.current)) {
+      // Stop hammering the instance. Replies still arrive: every send arms the
+      // poll fallback, and the state is surfaced so the UI can say so.
+      setRealtimeUnavailable(true);
+      return;
+    }
+    if (wsReconnectTimer.current) clearTimeout(wsReconnectTimer.current);
+    wsReconnectTimer.current = setTimeout(() => {
+      wsReconnectTimer.current = null;
+      if (activeRef.current) {
+        void connectWebSocketRef.current();
+      }
+    }, nextReconnectDelayMs(wsFailureCount.current));
+  }, []);
+
   const connectWebSocket = useCallback(async () => {
     if (!activeRef.current || wsRef.current) return;
 
@@ -507,6 +541,7 @@ export function useCoachChat(options: UseCoachChatOptions = {}): UseCoachChatRes
     if (!instanceBaseUrl) {
       setUsingPollFallback(true);
       restartTurnPollingRef.current({ forceForMs: POLL_GRACE_MS });
+      scheduleReconnect();
       return;
     }
 
@@ -516,11 +551,34 @@ export function useCoachChat(options: UseCoachChatOptions = {}): UseCoachChatRes
     } catch {
       setUsingPollFallback(true);
       restartTurnPollingRef.current({ forceForMs: POLL_GRACE_MS });
+      scheduleReconnect();
       return;
     }
 
     wsRef.current = socket;
     setIsRealtimeConnected(false);
+
+    // A socket that never fires open/error/close (black-holed by a captive
+    // portal or a proxy that accepts the TCP connection and then stalls) would
+    // otherwise pin the chat in non-realtime mode for the whole session, since
+    // connectWebSocket early-returns while wsRef is set.
+    if (wsConnectTimeout.current) clearTimeout(wsConnectTimeout.current);
+    wsConnectTimeout.current = setTimeout(() => {
+      wsConnectTimeout.current = null;
+      if (wsRef.current === socket && !isRealtimeConnectedRef.current) {
+        try {
+          socket.close();
+        } catch {
+          // ignore
+        }
+        // close() on a stalled socket may never call back — drop the ref here
+        // so the next attempt is not blocked by it.
+        if (wsRef.current === socket) {
+          wsRef.current = null;
+          scheduleReconnect();
+        }
+      }
+    }, WS_CONNECT_TIMEOUT_MS);
 
     socket.onopen = async () => {
       try {
@@ -535,6 +593,8 @@ export function useCoachChat(options: UseCoachChatOptions = {}): UseCoachChatRes
       } catch {
         setUsingPollFallback(true);
         restartTurnPollingRef.current({ forceForMs: POLL_GRACE_MS });
+        // onclose counts the failure and backs off — an instance with no
+        // token endpoint must not be retried every 3s forever.
         socket.close();
       }
     };
@@ -552,6 +612,12 @@ export function useCoachChat(options: UseCoachChatOptions = {}): UseCoachChatRes
         };
 
         if (data.type === 'authenticated') {
+          wsFailureCount.current = 0;
+          setRealtimeUnavailable(false);
+          if (wsConnectTimeout.current) {
+            clearTimeout(wsConnectTimeout.current);
+            wsConnectTimeout.current = null;
+          }
           setIsRealtimeConnected(true);
           setUsingPollFallback(false);
           const id = roomIdRef.current;
@@ -621,25 +687,25 @@ export function useCoachChat(options: UseCoachChatOptions = {}): UseCoachChatRes
         clearInterval(wsPingTimer.current);
         wsPingTimer.current = null;
       }
+      if (wsConnectTimeout.current) {
+        clearTimeout(wsConnectTimeout.current);
+        wsConnectTimeout.current = null;
+      }
+
       if (hasActiveTurn(messagesRef.current) || awaitingTurnStartRef.current) {
         setUsingPollFallback(true);
         restartTurnPollingRef.current({ forceForMs: POLL_GRACE_MS });
       }
 
-      if (activeRef.current) {
-        wsReconnectTimer.current = setTimeout(() => {
-          wsReconnectTimer.current = null;
-          if (activeRef.current) {
-            void connectWebSocketRef.current();
-          }
-        }, WS_RECONNECT_MS);
-      }
+      // Exponential backoff with a cap, and a hard stop after
+      // WS_MAX_RECONNECT_ATTEMPTS consecutive failures (CW-494b).
+      scheduleReconnect();
     };
 
     socket.onerror = () => {
       socket.close();
     };
-  }, [setAwaitingTurn]);
+  }, [scheduleReconnect, setAwaitingTurn]);
 
   useEffect(() => {
     restartTurnPollingRef.current = restartTurnPolling;
@@ -670,6 +736,7 @@ export function useCoachChat(options: UseCoachChatOptions = {}): UseCoachChatRes
       setPendingAttachments([]);
       setSendError(null);
       setSendQuota(null);
+      setSubmittedApprovalIds([]);
       setInput('');
       if (options?.clearMessages !== false) {
         // Update the ref synchronously too — setMessages/messagesRef sync
@@ -890,7 +957,9 @@ export function useCoachChat(options: UseCoachChatOptions = {}): UseCoachChatRes
       }
       if (!text && pendingAttachments.length === 0) return;
 
-      setSendError(null);
+      const freshFeedback = feedbackOnSendStart();
+      setSendError(freshFeedback.sendError);
+      setSendQuota(freshFeedback.sendQuota);
       clearError();
 
       let uploaded: PendingAttachment[] = [];
@@ -1007,6 +1076,15 @@ export function useCoachChat(options: UseCoachChatOptions = {}): UseCoachChatRes
       approvalInFlight.current.add(approval.approvalId);
       setSendError(null);
 
+      // Feedback BEFORE the request, not after it. The submission streams a
+      // whole agent turn, so awaiting it first left the athlete looking at an
+      // unchanged approval card for the full tool latency (CW-494a).
+      setSubmittedApprovalIds((prev) =>
+        prev.includes(approval.approvalId) ? prev : [...prev, approval.approvalId],
+      );
+      setAwaitingTurn(true);
+      restartTurnPolling({ forceForMs: POLL_GRACE_MS });
+
       try {
         await submitChatToolApproval({
           roomId: currentRoomId,
@@ -1014,13 +1092,25 @@ export function useCoachChat(options: UseCoachChatOptions = {}): UseCoachChatRes
           approved: approval.approved,
           reason: approval.reason,
         });
-        setAwaitingTurn(true);
-        restartTurnPolling({ forceForMs: POLL_GRACE_MS });
-        await loadMessages(currentRoomId, { silent: true });
+        approvalInFlight.current.delete(approval.approvalId);
+        if (roomIdRef.current === currentRoomId) {
+          await loadMessages(currentRoomId, { silent: true });
+        }
       } catch (err) {
         approvalInFlight.current.delete(approval.approvalId);
-        setSendError(friendlyError(err, 'Tool approval failed'));
-        throw err;
+        const failure = classifyApprovalFailure(err, {
+          rejected: friendlyError(err, 'Tool approval failed'),
+          unknown: 'Lost connection while confirming — checking whether it went through.',
+        });
+        if (failure.resubmittable) {
+          // The server answered and refused, so nothing ran: give the card back.
+          setSubmittedApprovalIds((prev) => prev.filter((id) => id !== approval.approvalId));
+          setAwaitingTurn(false);
+        }
+        // Otherwise the write may already have landed — keep the card hidden and
+        // let polling/reload show the real outcome instead of inviting a second,
+        // duplicating approval.
+        setSendError(failure.message);
       }
     },
     [loadMessages, restartTurnPolling, setAwaitingTurn],
@@ -1109,10 +1199,12 @@ export function useCoachChat(options: UseCoachChatOptions = {}): UseCoachChatRes
     awaitingReply: streaming,
     isRealtimeConnected,
     usingPollFallback,
+    realtimeUnavailable,
     error: error || (chatError ? friendlyError(chatError, 'Chat error') : null),
     sendError,
     sendQuota,
     notice,
+    submittedApprovalIds,
     send,
     applyStarter,
     resumeTurn,

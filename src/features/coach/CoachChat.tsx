@@ -51,6 +51,7 @@ import {
   DISCUSS_SESSION_PROMPT,
   DISCUSS_TODAY_PROMPT,
 } from './starterPrompts';
+import { filterSubmittedApprovals } from './toolApproval';
 import type {
   CoachUIMessage,
   ToolDomain,
@@ -164,11 +165,14 @@ function jitterSeed(id: string): number {
 function Bubble({
   message,
   isFresh,
+  submittedApprovalIds,
   onApprove,
 }: {
   message: CoachUIMessage;
   /** Arrived during this session — replayed history must not re-animate on open. */
   isFresh: boolean;
+  /** Approvals already sent — their cards go away the moment they are tapped. */
+  submittedApprovalIds: string[];
   onApprove: (payload: { approvalId: string; approved: boolean }) => void;
 }) {
   const isUser = message.role === 'user';
@@ -180,7 +184,10 @@ function Bubble({
   const morphing = typing || isActiveTurnStatus(message.metadata?.turnStatus);
   const text = displayMessageText(message).trim();
   const images = messageImageParts(message);
-  const approvals = extractPendingApprovals(message);
+  const approvals = filterSubmittedApprovals(
+    extractPendingApprovals(message),
+    submittedApprovalIds,
+  );
   const toolNotes = toolOutcomeSummaries(message);
   const toolProgress = toolInProgressSummaries(message);
 
@@ -361,7 +368,7 @@ export function CoachChat({
   const [attachSheetOpen, setAttachSheetOpen] = useState(false);
   const { containerRef, overlap } = useKeyboardOverlap();
   const chat = useCoachChat({ targetRoomId });
-  const listMessages = useTypingFloor(chat.displayMessages);
+  const listMessages = useTypingFloor(chat.displayMessages, chat.roomId);
   const dictation = useCoachDictation({
     canStart: !chat.isReadOnly && !chat.sending,
     input: chat.input,
@@ -534,7 +541,11 @@ export function CoachChat({
                   chat.isRealtimeConnected ? 'bg-green-400' : 'bg-text-muted'
                 }`}
                 accessibilityLabel={
-                  chat.isRealtimeConnected ? 'Live connection' : 'Polling connection'
+                  chat.isRealtimeConnected
+                    ? 'Live connection'
+                    : chat.realtimeUnavailable
+                      ? 'Live connection unavailable — replies arrive by polling'
+                      : 'Polling connection'
                 }
               />
               <Text
@@ -613,8 +624,12 @@ export function CoachChat({
             <Bubble
               message={item}
               isFresh={historyCaptured.current && !historyIds.current.has(item.id)}
+              submittedApprovalIds={chat.submittedApprovalIds}
               onApprove={(payload) => {
-                void chat.submitToolApproval(payload);
+                // submitToolApproval resolves its own failures into sendError;
+                // the catch is the belt-and-braces guard against an unhandled
+                // rejection escaping into the RN error overlay.
+                chat.submitToolApproval(payload).catch(() => {});
               }}
             />
           )}
