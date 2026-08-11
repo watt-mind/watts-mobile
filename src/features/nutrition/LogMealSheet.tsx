@@ -1,7 +1,6 @@
 /* Hallmark · genre: modern-minimal · design-system: docs/DESIGN.md · designed-as-app */
 import { useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   Image,
   InteractionManager,
@@ -36,6 +35,7 @@ import { BarcodeScannerModal } from '@/src/features/nutrition/BarcodeScannerModa
 import { PortionCalculatorModal } from '@/src/features/nutrition/PortionCalculatorModal';
 import { Button } from '@/src/components/Button';
 import { AppSymbol } from '@/src/components/AppSymbol';
+import { Spinner } from '@/src/components/Spinner';
 import {
   getMealHistory,
   saveMealToHistory,
@@ -1147,7 +1147,7 @@ export function LogMealSheet({
                 <View className="absolute inset-0 rounded-xl border-2 border-brand/40 bg-brand/10" />
               </View>
             ) : null}
-            <ActivityIndicator size="large" color={theme.brandOnSurface} />
+            <Spinner size="large" />
             <Text className="mt-3 text-base font-semibold text-text-primary">
               {ANALYZING_MESSAGES[analyzingStep]}
             </Text>
@@ -1409,7 +1409,7 @@ export function LogMealSheet({
                   {/* Search Loading State */}
                   {isSearchingFood ? (
                     <View className="items-center justify-center py-8">
-                      <ActivityIndicator size="small" color={theme.brandOnSurface} />
+                      <Spinner size="small" />
                       <Text className="mt-2 text-xs font-medium text-text-muted">
                         Searching global food database...
                       </Text>

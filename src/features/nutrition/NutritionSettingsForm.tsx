@@ -1,16 +1,9 @@
 import { useMemo, useState, type ReactNode } from 'react';
-import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  Switch,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { Pressable, ScrollView, Switch, Text, TextInput, View } from 'react-native';
 
 import { friendlyError } from '@/src/api/errors';
 import { Button } from '@/src/components/Button';
+import { Spinner } from '@/src/components/Spinner';
 import { hapticError, hapticLight, hapticSuccess } from '@/src/lib/haptics';
 import { parseDecimal } from '@/src/lib/parseDecimal';
 import { Colors } from '@/src/theme/colors';
@@ -348,7 +341,7 @@ export function NutritionSettingsForm({ initial }: { initial: NutritionSettingsS
       {successMessage ? <Text className="mt-3 text-sm text-brand">{successMessage}</Text> : null}
       {saveMutation.isPending ? (
         <View className="mt-3 flex-row items-center gap-2">
-          <ActivityIndicator color={theme.brandOnSurface} />
+          <Spinner />
           <Text className="text-sm text-text-muted">Saving and refreshing fueling plans…</Text>
         </View>
       ) : null}
