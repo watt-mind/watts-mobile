@@ -6,6 +6,7 @@ import {
   buildSessionEditorPatch,
   emptySessionEditorForm,
   sessionEditorFormFromValues,
+  sessionSportChoices,
   validateSessionEditorForm,
   type SessionEditorForm,
 } from '../sessionEditor';
@@ -98,6 +99,29 @@ describe('sessionEditorFormFromValues', () => {
       description: 'Z3',
     });
   });
+
+  it('preserves a stored sport the editor has no option for (CW-487)', () => {
+    const form = sessionEditorFormFromValues({
+      dateKey: '2026-07-23',
+      title: 'Open Water Swim',
+      type: 'Swimming',
+      durationSec: 3600,
+    });
+    expect(form.type).toBe('Swimming');
+    expect(sessionSportChoices(form.type)).toContainEqual({
+      label: 'Swimming',
+      value: 'Swimming',
+      preserved: true,
+    });
+  });
+
+  it('leaves the sport empty when the session has none (CW-487)', () => {
+    const form = sessionEditorFormFromValues({ dateKey: '2026-07-23', title: 'Brick', type: null });
+    expect(form.type).toBe('');
+    expect(sessionSportChoices(form.type)).toHaveLength(4);
+    // A typo fix must still be savable without inventing a sport.
+    expect(validateSessionEditorForm(form, { requireType: false }).ok).toBe(true);
+  });
 });
 
 /**
@@ -116,7 +140,7 @@ function editorContextFromListItem(item: PlannedListItem) {
 }
 
 function patchFrom(initial: SessionEditorForm, edited: Partial<SessionEditorForm>) {
-  const result = validateSessionEditorForm({ ...initial, ...edited });
+  const result = validateSessionEditorForm({ ...initial, ...edited }, { requireType: false });
   if (!result.ok) throw new Error(`form invalid: ${JSON.stringify(result.fieldErrors)}`);
   return buildSessionEditorPatch(initial, result.payload);
 }
@@ -157,6 +181,21 @@ describe('buildSessionEditorPatch', () => {
     );
     const patch = patchFrom(initial, { title: 'Endurance' });
     expect(patch).toEqual({ title: 'Endurance' });
+  });
+
+  it('keeps a non-option sport out of the patch unless changed (CW-487)', () => {
+    const initial = sessionEditorFormFromValues(
+      editorContextFromListItem({ ...listItem, type: 'VirtualRide' }),
+    );
+    expect(patchFrom(initial, { title: 'Zwift race' })).toEqual({ title: 'Zwift race' });
+    expect(patchFrom(initial, { type: 'Run' })).toEqual({ type: 'Run' });
+  });
+
+  it('omits the sport entirely when the session had none and the athlete did not pick one', () => {
+    const initial = sessionEditorFormFromValues(
+      editorContextFromListItem({ ...listItem, type: null }),
+    );
+    expect(patchFrom(initial, { title: 'Brick day' })).toEqual({ title: 'Brick day' });
   });
 
   it('is empty when nothing changed, and carries date moves', () => {
