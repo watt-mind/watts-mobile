@@ -1,5 +1,6 @@
 import { isValidCalendarYmd } from '@/src/features/log/mapLogForm';
 import { localDateKey } from '@/src/features/today/weekGlance';
+import { parseDecimal } from '@/src/lib/parseDecimal';
 import { ymdToWireDate } from '@/src/lib/wireDate';
 
 import type { CreateGoalInput, GoalType } from './types';
@@ -86,6 +87,19 @@ export const PRIORITY_OPTIONS: { id: GoalPriority; label: string }[] = [
   { id: 'MEDIUM', label: 'Medium' },
   { id: 'LOW', label: 'Low' },
 ];
+
+/**
+ * Parse an optional start/target value. Comma decimals are accepted (CW-484,
+ * CW-557): the wizard's numeric fields use a decimal-pad keyboard, whose only
+ * decimal key emits ',' in comma-decimal locales, so `Number("27,5")` was NaN
+ * and `validateEventGoalWizardForm` rejected a perfectly valid entry with
+ * "Target value must be a number." Returns `undefined` for blank or
+ * unparseable text so callers can omit the field rather than wire up a NaN.
+ */
+function parseOptionalNumber(value: string): number | undefined {
+  const n = parseDecimal(value);
+  return n == null ? undefined : n;
+}
 
 export function emptyEventGoalWizardForm(type: GoalType = 'EVENT'): EventGoalWizardForm {
   return {
@@ -239,10 +253,10 @@ export function validateEventGoalWizardForm(
     form.type === 'BODY_COMPOSITION' ||
     form.type === 'CONSISTENCY'
   ) {
-    if (form.targetValue.trim() && Number.isNaN(Number(form.targetValue))) {
+    if (form.targetValue.trim() && parseOptionalNumber(form.targetValue) === undefined) {
       return 'Target value must be a number.';
     }
-    if (form.startValue.trim() && Number.isNaN(Number(form.startValue))) {
+    if (form.startValue.trim() && parseOptionalNumber(form.startValue) === undefined) {
       return 'Start value must be a number.';
     }
   }
@@ -319,22 +333,25 @@ export function buildEventGoalWizardInput(
     return input;
   }
 
+  const startValue = parseOptionalNumber(form.startValue);
+  const targetValue = parseOptionalNumber(form.targetValue);
+
   if (form.type === 'BODY_COMPOSITION') {
     input.metric = 'weight_kg';
-    if (form.startValue.trim()) input.startValue = Number(form.startValue);
-    if (form.targetValue.trim()) input.targetValue = Number(form.targetValue);
+    if (startValue !== undefined) input.startValue = startValue;
+    if (targetValue !== undefined) input.targetValue = targetValue;
     return input;
   }
 
   if (form.type === 'PERFORMANCE') {
     if (form.metric.trim()) input.metric = form.metric.trim();
-    if (form.startValue.trim()) input.startValue = Number(form.startValue);
-    if (form.targetValue.trim()) input.targetValue = Number(form.targetValue);
+    if (startValue !== undefined) input.startValue = startValue;
+    if (targetValue !== undefined) input.targetValue = targetValue;
     return input;
   }
 
   // CONSISTENCY
   if (form.metric.trim()) input.metric = form.metric.trim();
-  if (form.targetValue.trim()) input.targetValue = Number(form.targetValue);
+  if (targetValue !== undefined) input.targetValue = targetValue;
   return input;
 }
