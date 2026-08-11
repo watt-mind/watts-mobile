@@ -66,6 +66,63 @@ describe('validateAdHocForm', () => {
     }
   });
 
+  /**
+   * `45,5` from a comma-decimal keyboard is a duration greater than zero — the old
+   * `Number()` parse turned it into NaN and told the athlete otherwise (CW-556).
+   */
+  it('accepts comma-decimal and grouped durations (CW-556)', () => {
+    const comma = validateAdHocForm({
+      type: 'Ride',
+      durationText: '45,5',
+      intensity: 'Endurance',
+      notes: '',
+    });
+    expect(comma.ok).toBe(true);
+    if (comma.ok) expect(comma.payload.durationMinutes).toBe(46);
+
+    const grouped = validateAdHocForm({
+      type: 'Ride',
+      durationText: '1 234,5',
+      intensity: 'Endurance',
+      notes: '',
+    });
+    expect(grouped.ok).toBe(true);
+    if (grouped.ok) expect(grouped.payload.durationMinutes).toBe(1235);
+
+    const mixed = validateAdHocForm({
+      type: 'Ride',
+      durationText: '1.234,56',
+      intensity: 'Endurance',
+      notes: '',
+    });
+    expect(mixed.ok).toBe(true);
+    if (mixed.ok) expect(mixed.payload.durationMinutes).toBe(1235);
+  });
+
+  it('still rejects unparseable durations (CW-556)', () => {
+    for (const durationText of ['abc', '', '   ', '1,2,3.4', '-5', '0,0']) {
+      const result = validateAdHocForm({
+        type: 'Run',
+        durationText,
+        intensity: 'Tempo',
+        notes: '',
+      });
+      expect(result.ok, JSON.stringify(durationText)).toBe(false);
+      if (!result.ok) expect(result.error).toBe('Enter a duration greater than zero.');
+    }
+  });
+
+  it('rejects a comma-decimal duration that rounds to zero minutes (CW-556)', () => {
+    const result = validateAdHocForm({
+      type: 'Run',
+      durationText: '0,4',
+      intensity: 'Tempo',
+      notes: '',
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe('Enter a duration of at least 1 minute.');
+  });
+
   it('trims notes', () => {
     const result = validateAdHocForm({
       type: 'Swim',

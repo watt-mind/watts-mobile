@@ -1,3 +1,5 @@
+import { parseDecimal, parseNonNegativeDecimal } from '@/src/lib/parseDecimal';
+
 export const SESSION_SPORT_OPTIONS = [
   { label: 'Cycling', value: 'Ride' },
   { label: 'Running', value: 'Run' },
@@ -119,18 +121,25 @@ export function sessionEditorFormFromValues(input: {
   };
 }
 
+/**
+ * Duration in seconds, or null when the text is blank or not a usable positive number.
+ *
+ * Parsed with `parseDecimal` (CW-484) so a comma-decimal keyboard — the only decimal key
+ * the athlete has on hu/de/fr/… devices — is understood: `27,5` is 27.5 minutes, not a
+ * missing duration (CW-556). This is the single parse used by BOTH validation and the
+ * dirty diff, so the value that gets saved and the value that gets compared can never
+ * disagree.
+ */
 function normalizeDurationSec(durationMinutes: string): number | null {
-  const minutes = Number(durationMinutes);
-  if (!durationMinutes.trim() || !Number.isFinite(minutes) || minutes <= 0) return null;
+  const minutes = parseDecimal(durationMinutes);
+  if (minutes == null || minutes <= 0) return null;
   return Math.round(minutes * 60);
 }
 
+/** Rounded TSS, or null when the text is blank or not a usable non-negative number (CW-556). */
 function normalizeTss(tss: string): number | null {
-  const raw = tss.trim();
-  if (!raw) return null;
-  const n = Number(raw);
-  if (!Number.isFinite(n) || n < 0) return null;
-  return Math.round(n);
+  const n = parseNonNegativeDecimal(tss);
+  return n == null ? null : Math.round(n);
 }
 
 /** Comparable (payload-shaped) view of a form, used to diff edits against the initial state. */
@@ -163,23 +172,21 @@ export function validateSessionEditorForm(
   if (requireType && !form.type.trim()) fieldErrors.type = 'Activity type is required';
   if (!form.dateKey) fieldErrors.dateKey = 'Day is required';
 
-  const minutes = Number(form.durationMinutes);
-  if (!form.durationMinutes.trim() || !Number.isFinite(minutes) || minutes <= 0) {
+  const durationSec = normalizeDurationSec(form.durationMinutes);
+  if (durationSec == null) {
     fieldErrors.durationMinutes = 'Duration (minutes) is required';
   }
 
-  const tssRaw = form.tss.trim();
+  // Blank TSS is legal; text that is present but unparseable is not.
   let tss: number | null = null;
-  if (tssRaw) {
-    const n = Number(tssRaw);
-    if (!Number.isFinite(n) || n < 0) {
-      fieldErrors.tss = 'TSS must be a number';
-    } else {
-      tss = Math.round(n);
-    }
+  if (form.tss.trim()) {
+    tss = normalizeTss(form.tss);
+    if (tss == null) fieldErrors.tss = 'TSS must be a number';
   }
 
-  if (Object.keys(fieldErrors).length > 0) {
+  // The `durationSec == null` arm is implied by the field error above; it is spelled out so
+  // the payload below is typed as a number without a cast.
+  if (Object.keys(fieldErrors).length > 0 || durationSec == null) {
     return { ok: false, fieldErrors };
   }
 
@@ -189,7 +196,7 @@ export function validateSessionEditorForm(
     payload: {
       title,
       type: form.type.trim(),
-      durationSec: Math.round(minutes * 60),
+      durationSec,
       tss,
       description: description || null,
       dateKey: form.dateKey,
