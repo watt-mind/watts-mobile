@@ -503,7 +503,11 @@ export async function readHealthKitWorkouts(
       });
     }
     return out;
-  } catch {
-    return [];
+  } catch (err) {
+    // Never swallow a query failure into an empty result: "HealthKit threw" and
+    // "this device has no workouts" would be indistinguishable, the pass would
+    // report Success, and nothing would reach Sentry or the ledger (CW-465).
+    // runHealthSyncPass has a pass-level catch that sets workoutPassError.
+    throw err instanceof Error ? err : new Error('HealthKit workout query failed');
   }
 }
