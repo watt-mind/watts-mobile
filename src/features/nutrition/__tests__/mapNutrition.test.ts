@@ -23,6 +23,7 @@ import {
   quickLogInvalidFields,
   quickLogNegativeFields,
   quickLogValidationError,
+  toMealHistoryEntry,
   toNutritionUploadPayload,
 } from '../mapNutrition';
 import { EDIT_ITEM_INVALID_NUMBER, EDIT_ITEM_NEGATIVE } from '../editNutritionItemForm';
@@ -632,5 +633,81 @@ describe('quick-log negative guard (CW-349)', () => {
     expect(quickLogNegativeFields(nameOnly)).toEqual([]);
     expect(quickLogValidationError(nameOnly)).toBeNull();
     expect(quickLogHasContent(emptyQuickLogForm())).toBe(false);
+  });
+});
+
+describe('toMealHistoryEntry', () => {
+  it('keeps comma-decimal macros instead of dropping them (CW-519)', () => {
+    // The decimal-pad keyboard on a comma-decimal device emits ',' as its only
+    // separator, so raw Number('27,5') was NaN and the macro vanished from the
+    // saved history entry while the upload itself was correct.
+    const entry = toMealHistoryEntry({
+      ...emptyQuickLogForm(),
+      name: 'Oats',
+      calories: '320',
+      protein: '27,5',
+      carbs: '45,25',
+      fat: '8,5',
+    });
+
+    expect(entry).toEqual({
+      name: 'Oats',
+      calories: 320,
+      protein: 27.5,
+      carbs: 45.25,
+      fat: 8.5,
+    });
+  });
+
+  it('accepts grouped thousands in either convention', () => {
+    expect(
+      toMealHistoryEntry({ ...emptyQuickLogForm(), name: 'Feast', calories: '1 234,5' }).calories,
+    ).toBe(1234.5);
+    expect(
+      toMealHistoryEntry({ ...emptyQuickLogForm(), name: 'Feast', calories: '1.234,56' }).calories,
+    ).toBe(1234.56);
+    expect(
+      toMealHistoryEntry({ ...emptyQuickLogForm(), name: 'Feast', calories: '1,234.56' }).calories,
+    ).toBe(1234.56);
+  });
+
+  it('still parses dot decimals and plain integers', () => {
+    const entry = toMealHistoryEntry({
+      ...emptyQuickLogForm(),
+      name: 'Oats',
+      calories: '320',
+      protein: '18.5',
+      carbs: '45',
+      fat: '8.25',
+    });
+
+    expect(entry).toEqual({
+      name: 'Oats',
+      calories: 320,
+      protein: 18.5,
+      carbs: 45,
+      fat: 8.25,
+    });
+  });
+
+  it('preserves the > 0 rule: zero, negative, blank and unparseable are omitted', () => {
+    const entry = toMealHistoryEntry({
+      ...emptyQuickLogForm(),
+      name: 'Oats',
+      calories: '0',
+      protein: '-5',
+      carbs: '',
+      fat: 'abc',
+    });
+
+    expect(entry).toEqual({ name: 'Oats' });
+    expect(entry.calories).toBeUndefined();
+    expect(entry.protein).toBeUndefined();
+    expect(entry.carbs).toBeUndefined();
+    expect(entry.fat).toBeUndefined();
+  });
+
+  it('passes the name through untouched for saveMealToHistory to trim', () => {
+    expect(toMealHistoryEntry({ ...emptyQuickLogForm(), name: '  Oats  ' }).name).toBe('  Oats  ');
   });
 });

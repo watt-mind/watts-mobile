@@ -426,6 +426,45 @@ export function toNutritionUploadPayload(
   return { date, items: [item] };
 }
 
+export type MealHistoryEntry = {
+  name: string;
+  calories?: number;
+  protein?: number;
+  carbs?: number;
+  fat?: number;
+};
+
+/**
+ * Build the meal-history record for a quick-log form.
+ *
+ * Extracted from `LogMealSheet.onSubmit` (CW-519): the history write still used raw
+ * `Number(form.protein)`, so on a comma-decimal device — where the decimal-pad's only
+ * separator key emits ',' — `Number('27,5')` was NaN and the macro was silently
+ * dropped from the saved entry. The upload alongside it parsed correctly (CW-349), so
+ * the day's totals looked right and nothing warned the user; the loss only surfaced
+ * later, when re-picking the meal from history prefilled a short form.
+ *
+ * Parsing goes through the same `parseOptionalNumber` → `parseDecimal` path as
+ * `toNutritionUploadPayload` so the two writes cannot drift apart again. Only the
+ * parser changed: a macro is still recorded only when it is strictly greater than
+ * zero, and blank, zero, negative and unparseable values all stay `undefined`.
+ */
+export function toMealHistoryEntry(form: NutritionQuickLogForm): MealHistoryEntry {
+  const positive = (value: string): number | undefined => {
+    const n = parseOptionalNumber(value);
+    return n != null && n > 0 ? n : undefined;
+  };
+
+  return {
+    // Left untrimmed on purpose — `saveMealToHistory` trims and dedupes the name itself.
+    name: form.name,
+    calories: positive(form.calories),
+    protein: positive(form.protein),
+    carbs: positive(form.carbs),
+    fat: positive(form.fat),
+  };
+}
+
 export function nutritionWebPath(): string {
   return '/nutrition';
 }
