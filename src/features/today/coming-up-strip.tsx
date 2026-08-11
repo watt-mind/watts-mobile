@@ -10,7 +10,7 @@ import { SportIcon } from '@/src/components/SportIcon';
 import { humanizeWorkoutType } from '@/src/lib/humanizeWorkoutType';
 import type { PlannedListItem } from '@/src/features/activity/types';
 import { useUpcomingPlannedQuery } from '@/src/features/activity/useActivity';
-import { localDateKey } from '@/src/features/today/weekGlance';
+import { localDateKey } from '@/src/lib/date';
 import { APP_HREFS } from '@/src/linking/appHrefs';
 
 const TEASER_LIMIT = 3;

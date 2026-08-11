@@ -36,7 +36,7 @@ import { useAthleteProfileQuery } from '@/src/features/profile/useProfile';
 import { useOfflineCached } from '@/src/hooks/useOfflineCached';
 import { humanizeWorkoutType } from '@/src/lib/humanizeWorkoutType';
 import { APP_HREFS } from '@/src/linking/appHrefs';
-import { localDateKey } from '@/src/features/today/weekGlance';
+import { localDateKey } from '@/src/lib/date';
 import { zoneColor, Colors } from '@/src/theme/colors';
 
 function plannedHeroStats(data: {

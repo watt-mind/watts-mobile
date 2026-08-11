@@ -1,12 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import type { ActivityListItem, PlannedListItem } from '@/src/features/activity/types';
-import {
-  computeWeekGlance,
-  localDateKey,
-  resolveWeekGlanceStripState,
-  weekRangeContaining,
-} from '@/src/features/today/weekGlance';
+import { localDateKey, weekRangeContaining } from '@/src/lib/date';
+import { computeWeekGlance, resolveWeekGlanceStripState } from '@/src/features/today/weekGlance';
 
 function activity(
   partial: Partial<ActivityListItem> & { date: string; durationSec?: number; tss?: number },

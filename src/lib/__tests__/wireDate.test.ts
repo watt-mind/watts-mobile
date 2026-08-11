@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { localDateKey } from '@/src/features/today/weekGlance';
+import { localDateKey } from '@/src/lib/date';
 import { ymdToLocalEndOfDayIso, ymdToLocalStartOfDayIso, ymdToWireDate } from '@/src/lib/wireDate';
 import { CRITICAL_TIME_ZONES, TZ_AUCKLAND, TZ_KOLKATA, withTimeZone } from '@/src/test/timezone';
 

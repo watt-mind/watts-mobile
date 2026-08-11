@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { localDateKey } from '@/src/features/today/weekGlance';
+import { localDateKey } from '@/src/lib/date';
 import { CRITICAL_TIME_ZONES, TZ_NEW_YORK, withTimeZone } from '@/src/test/timezone';
 
 import {

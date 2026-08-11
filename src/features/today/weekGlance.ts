@@ -1,4 +1,5 @@
 import type { ActivityListItem, PlannedListItem } from '@/src/features/activity/types';
+import { localDateKey, weekRangeContaining } from '@/src/lib/date';
 
 export type WeekDayBar = {
   /** Local YYYY-MM-DD */
@@ -22,52 +23,6 @@ export type WeekGlance = {
   summaryLine: string;
   days: WeekDayBar[];
 };
-
-function startOfLocalDay(d: Date): Date {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
-}
-
-function addLocalDays(d: Date, days: number): Date {
-  const next = new Date(d);
-  next.setDate(next.getDate() + days);
-  return next;
-}
-
-const DATE_ONLY_RE = /^(\d{4})-(\d{2})-(\d{2})(?:[T ]00:00:00(?:\.0+)?(?:Z|[+-]00:?00)?)?$/;
-
-/** Local calendar key YYYY-MM-DD. Date-only strings stay calendar-stable (not UTC midnight). */
-export function localDateKey(input: string | Date | null | undefined): string | null {
-  if (input == null) return null;
-  if (typeof input === 'string') {
-    const trimmed = input.trim();
-    const dateOnly = DATE_ONLY_RE.exec(trimmed);
-    if (dateOnly) return `${dateOnly[1]}-${dateOnly[2]}-${dateOnly[3]}`;
-    const d = new Date(trimmed);
-    if (Number.isNaN(d.getTime())) return null;
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${y}-${m}-${day}`;
-  }
-  if (Number.isNaN(input.getTime())) return null;
-  const y = input.getFullYear();
-  const m = String(input.getMonth() + 1).padStart(2, '0');
-  const day = String(input.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
-/** Monday-start week containing `now` (local). */
-export function weekRangeContaining(now = new Date()): { start: Date; end: Date; keys: string[] } {
-  const today = startOfLocalDay(now);
-  const day = today.getDay(); // 0 Sun … 6 Sat
-  const mondayOffset = day === 0 ? -6 : 1 - day;
-  const start = addLocalDays(today, mondayOffset);
-  const keys: string[] = [];
-  for (let i = 0; i < 7; i += 1) {
-    keys.push(localDateKey(addLocalDays(start, i))!);
-  }
-  return { start, end: addLocalDays(start, 6), keys };
-}
 
 function formatHoursMinutes(totalSec: number): string {
   if (totalSec <= 0) return '0m';

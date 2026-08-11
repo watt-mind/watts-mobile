@@ -1,5 +1,5 @@
 import { localDateYmd } from '@/src/lib/date';
-import { localDateKey } from '@/src/features/today/weekGlance';
+import { localDateKey } from '@/src/lib/date';
 import { ymdToLocalEndOfDayIso, ymdToLocalStartOfDayIso } from '@/src/lib/wireDate';
 
 import type { AvailabilityDay } from './api';

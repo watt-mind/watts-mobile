@@ -1,5 +1,5 @@
 import { isValidCalendarYmd } from '@/src/features/log/mapLogForm';
-import { localDateKey } from '@/src/features/today/weekGlance';
+import { localDateKey } from '@/src/lib/date';
 import { parseDecimal } from '@/src/lib/parseDecimal';
 import { ymdToWireDate } from '@/src/lib/wireDate';
 
