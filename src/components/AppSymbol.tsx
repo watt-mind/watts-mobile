@@ -59,6 +59,7 @@ const SF_TO_MD = {
   leaf: 'eco',
   'leaf.fill': 'eco',
   'flame.fill': 'local_fire_department',
+  'fork.knife': 'restaurant',
   'dumbbell.fill': 'fitness_center',
   'drop.halffull': 'opacity',
   'gauge.with.dots.needle.33percent': 'speed',
