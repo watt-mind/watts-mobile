@@ -15,6 +15,7 @@ import {
   requestHealthAuth,
   type HealthStatusResult,
 } from '@/src/features/log/healthAuth';
+import { resolveEnableSyncOutcome } from '@/src/features/health/enableSyncOutcome';
 import { runHealthSyncPass } from '@/src/features/health/orchestrator';
 import { useHealthSyncPreferences } from '@/src/features/health/useHealthSyncPreferences';
 import { hapticError, hapticLight, hapticSuccess } from '@/src/lib/haptics';
@@ -96,7 +97,8 @@ export default function HealthSyncSettingsScreen() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const [noDataFound, setNoDataFound] = useState(false);
+  /** Banner copy when a completed pass read nothing — set by both the enable toggle and "Sync now" (CW-336). */
+  const [noDataHint, setNoDataHint] = useState<string | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [authStatus, setAuthStatus] = useState<HealthStatusResult>({ status: 'loading' });
 
@@ -179,8 +181,12 @@ export default function HealthSyncSettingsScreen() {
     hapticLight();
     setBusy(true);
     setSyncError(null);
+    setNoDataHint(null);
     try {
-      await setEnabled(enabled);
+      // Enabling succeeds even when the first pass finds nothing — that is a
+      // warning, not a failure, so the toggle stays on and only the hint appears.
+      const { syncPass } = await setEnabled(enabled);
+      setNoDataHint(resolveEnableSyncOutcome(syncPass, Platform.OS).hint);
       hapticSuccess();
     } catch (err) {
       setSyncError(err instanceof Error ? err.message : 'Could not update health sync');
@@ -194,8 +200,10 @@ export default function HealthSyncSettingsScreen() {
     hapticLight();
     setBusy(true);
     setSyncError(null);
+    setNoDataHint(null);
     try {
-      await setWorkouts(enabled);
+      const { syncPass } = await setWorkouts(enabled);
+      setNoDataHint(resolveEnableSyncOutcome(syncPass, Platform.OS).hint);
       hapticSuccess();
     } catch (err) {
       setSyncError(err instanceof Error ? err.message : 'Could not update workout sync');
@@ -211,7 +219,7 @@ export default function HealthSyncSettingsScreen() {
     setSyncError(null);
     try {
       const result = await runHealthSyncPass({ force: true });
-      setNoDataFound(!result.skipped && !result.foundLocalData);
+      setNoDataHint(resolveEnableSyncOutcome(result, Platform.OS).hint);
       const failed =
         result.wellnessFailed > 0 ||
         result.workoutsFailed > 0 ||
@@ -447,12 +455,8 @@ export default function HealthSyncSettingsScreen() {
                     loading={syncing}
                     variant="secondary"
                   />
-                  {noDataFound && (
-                    <Text className="leading-4.5 text-xs text-modify">
-                      {isIOS
-                        ? 'No Health data was found on this device. If you granted access recently, open Health → Profile → Apps → Coach Watts and check that read access is on.'
-                        : 'No Health Connect data was found on this device. Check that your fitness apps write to Health Connect and that Coach Watts has read access.'}
-                    </Text>
+                  {noDataHint && (
+                    <Text className="leading-4.5 text-xs text-modify">{noDataHint}</Text>
                   )}
                 </>
               ) : null}
