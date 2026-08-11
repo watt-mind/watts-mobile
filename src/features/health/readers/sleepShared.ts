@@ -73,6 +73,49 @@ export type HcSleepSession = {
 };
 
 /**
+ * Clip a sleep session (and its stages) to a date's attribution window.
+ *
+ * `sleepWindowForDate` returns abutting noon-to-noon windows, and a session is
+ * selected for a date when it *intersects* that window. Without clipping, a
+ * session that crosses noon — a shift worker sleeping 08:00–15:00, a long
+ * afternoon nap — is counted in full against both adjacent dates (CW-480).
+ * Clipping splits it at the boundary instead: the pre-noon part belongs to the
+ * earlier date, the post-noon part to the later one.
+ *
+ * Returns null when nothing of the session falls inside the window.
+ */
+export function clipHcSleepSessionToWindow(
+  session: HcSleepSession,
+  windowStart: number,
+  windowEnd: number,
+): HcSleepSession | null {
+  const start = Math.max(session.start, windowStart);
+  const end = Math.min(session.end, windowEnd);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return null;
+
+  if (!session.stages) return { start, end };
+
+  const stages = session.stages.flatMap((stage) => {
+    if (!stage.startTime || !stage.endTime || stage.stage == null) return [];
+    const stageStart = new Date(stage.startTime).getTime();
+    const stageEnd = new Date(stage.endTime).getTime();
+    if (!Number.isFinite(stageStart) || !Number.isFinite(stageEnd)) return [];
+    const clippedStart = Math.max(stageStart, windowStart);
+    const clippedEnd = Math.min(stageEnd, windowEnd);
+    if (clippedEnd <= clippedStart) return [];
+    return [
+      {
+        startTime: new Date(clippedStart).toISOString(),
+        endTime: new Date(clippedEnd).toISOString(),
+        stage: stage.stage,
+      },
+    ];
+  });
+
+  return { start, end, stages };
+}
+
+/**
  * Bucket Health Connect sleep into merged stage durations.
  *
  * Every bucket merges overlapping intervals rather than summing raw durations —
@@ -130,8 +173,10 @@ export function dayWindowLocal(dateYmd: string): { start: Date; end: Date } {
 
 /**
  * Sleep for a calendar day uses previous evening → next morning window.
- * The bounds are exactly 24h apart and abut the neighbouring days' windows, so
- * an early-afternoon nap belongs to one date instead of being counted twice.
+ * The bounds are exactly 24h apart and abut the neighbouring days' windows;
+ * combined with clipping at those bounds (see `clipHcSleepSessionToWindow`),
+ * sleep crossing the boundary is split between the two dates rather than
+ * counted twice.
  */
 export function sleepWindowForDate(dateYmd: string): { start: Date; end: Date } {
   const [y, m, d] = dateYmd.split('-').map(Number);

@@ -14,12 +14,13 @@ import { useThemeColors } from '@/src/theme/useThemeColors';
 import { formatDayChipLabel } from './formatPlanCopy';
 import { useCreatePlannedWorkoutMutation, usePatchPlannedWorkoutMutation } from './usePlans';
 import {
-  SESSION_SPORT_OPTIONS,
+  buildSessionEditorPatch,
   emptySessionEditorForm,
   sessionEditorFormFromValues,
+  sessionSportChoices,
+  sessionSportLabel,
   validateSessionEditorForm,
   type SessionEditorForm,
-  type SessionSportType,
 } from './sessionEditor';
 
 type CreateMode = {
@@ -90,11 +91,13 @@ function Field({
 function EditorBody({ context, onClose }: { context: CreateMode | EditMode; onClose: () => void }) {
   const createMutation = useCreatePlannedWorkoutMutation();
   const patchMutation = usePatchPlannedWorkoutMutation();
-  const initial =
+  const [initial] = useState<SessionEditorForm>(() =>
     context.mode === 'create'
       ? emptySessionEditorForm(context.dateKey)
-      : sessionEditorFormFromValues(context);
+      : sessionEditorFormFromValues(context),
+  );
   const [form, setForm] = useState<SessionEditorForm>(initial);
+  const sportChoices = sessionSportChoices(initial.type);
   const [fieldErrors, setFieldErrors] = useState<
     Partial<Record<'title' | 'type' | 'durationMinutes' | 'dateKey' | 'tss', string>>
   >({});
@@ -106,14 +109,16 @@ function EditorBody({ context, onClose }: { context: CreateMode | EditMode; onCl
       : (context.weekDayKeys ?? (context.dateKey ? [context.dateKey] : []));
   const busy = createMutation.isPending || patchMutation.isPending;
 
-  const setType = (type: SessionSportType) => {
+  const setType = (type: string) => {
     hapticLight();
     setForm((prev) => ({ ...prev, type }));
     setFieldErrors((prev) => ({ ...prev, type: undefined }));
   };
 
   const onSave = async () => {
-    const result = validateSessionEditorForm(form);
+    // In edit mode a session may be stored with no sport at all — don't force the athlete
+    // to invent one (and don't block a title fix) just to save (CW-487).
+    const result = validateSessionEditorForm(form, { requireType: context.mode === 'create' });
     if (!result.ok) {
       setFieldErrors(result.fieldErrors);
       return;
@@ -132,17 +137,13 @@ function EditorBody({ context, onClose }: { context: CreateMode | EditMode; onCl
           trainingWeekId: context.trainingWeekId,
         });
       } else {
-        await patchMutation.mutateAsync({
-          id: context.plannedId,
-          input: {
-            date: result.payload.dateKey,
-            title: result.payload.title,
-            type: result.payload.type,
-            durationSec: result.payload.durationSec,
-            tss: result.payload.tss,
-            description: result.payload.description,
-          },
-        });
+        // Sparse patch: only fields the athlete saw and changed (CW-486).
+        const input = buildSessionEditorPatch(initial, result.payload);
+        if (Object.keys(input).length === 0) {
+          onClose();
+          return;
+        }
+        await patchMutation.mutateAsync({ id: context.plannedId, input });
       }
       hapticSuccess();
       onClose();
@@ -211,7 +212,7 @@ function EditorBody({ context, onClose }: { context: CreateMode | EditMode; onCl
 
       <Text className="mb-1 text-sm font-medium text-text-muted">Sport</Text>
       <View className="mb-3 flex-row flex-wrap gap-2" testID="plan-session-editor-type">
-        {SESSION_SPORT_OPTIONS.map((option) => {
+        {sportChoices.map((option) => {
           const selected = form.type === option.value;
           return (
             <AnimatedPressable
@@ -234,6 +235,11 @@ function EditorBody({ context, onClose }: { context: CreateMode | EditMode; onCl
           );
         })}
       </View>
+      {sportChoices.some((choice) => choice.preserved) ? (
+        <Text className="mb-2 text-xs text-text-muted" testID="plan-session-editor-type-preserved">
+          {`Saved as ${sessionSportLabel(initial.type)} — kept unless you pick another sport.`}
+        </Text>
+      ) : null}
       {fieldErrors.type ? (
         <Text className="mb-2 text-xs text-danger">{fieldErrors.type}</Text>
       ) : null}

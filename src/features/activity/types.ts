@@ -213,6 +213,11 @@ export type PlannedListItem = {
   type: string | null;
   durationSec: number | null;
   tss: number | null;
+  /**
+   * Coach description when the list payload carried one. Optional because list rows may omit
+   * it — editors must treat `undefined` as "unknown", never as "clear it" (CW-486).
+   */
+  description?: string | null;
   /** Compact endurance silhouette when list payload includes structuredWorkout. */
   structureChartBlocks?: StructureChartBlock[];
 };

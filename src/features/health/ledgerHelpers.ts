@@ -60,6 +60,15 @@ export function beginLedgerAttempt(
   };
 }
 
+/**
+ * `attemptCount` is reset here so the orchestrator's backoff counts *consecutive*
+ * failures, not lifetime attempts (CW-478). Today's wellness sample re-uploads on
+ * every pass (always inside the resync window), so a lifetime counter passes
+ * MAX_AUTO_SYNC_ATTEMPTS within hours of healthy syncing — after which the first
+ * transient failure would wedge the item permanently: auto-retry refuses it, and
+ * the unresolved failure pins the watermark so every pass re-reads the full
+ * lookback until someone taps Retry by hand.
+ */
 export function completeLedgerSuccess(
   item: SyncLedgerItem,
   opts: {
@@ -75,6 +84,7 @@ export function completeLedgerSuccess(
     status: 'synced',
     lastSuccessAt: at,
     lastAttemptAt: at,
+    attemptCount: 0,
     lastError: undefined,
     remoteWorkoutId: opts.remoteWorkoutId ?? item.remoteWorkoutId,
     serverDuplicateNoId: opts.serverDuplicateNoId ?? item.serverDuplicateNoId,
