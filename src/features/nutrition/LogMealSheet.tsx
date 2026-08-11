@@ -62,6 +62,12 @@ import {
   type NutritionQuickLogForm,
 } from '@/src/features/nutrition/types';
 import { useLogNutritionItem, useTodayNutritionQuery } from '@/src/features/nutrition/useNutrition';
+import { loadPhotoMealSettings } from '@/src/features/nutrition/photoMealSettings';
+import {
+  type PhotoCaptureSettings,
+  resolvePhotoCaptureSettings,
+  resolvePhotoSourceLaunch,
+} from '@/src/features/nutrition/photoSourceLaunch';
 import { usePhotoMealSettings } from '@/src/features/nutrition/usePhotoMealSettings';
 import { NutritionTargetsCard } from '@/src/features/nutrition/NutritionTargetsCard';
 import { hapticError, hapticLight, hapticSuccess } from '@/src/lib/haptics';
@@ -877,7 +883,7 @@ export function LogMealSheet({
     await analyzeCapturedPhoto(photo);
   };
 
-  const handleTakePhoto = async () => {
+  const handleTakePhoto = async (options?: { saveToLibrary?: boolean }) => {
     hapticLight();
     setError(null);
     try {
@@ -899,7 +905,9 @@ export function LogMealSheet({
         return;
       }
 
-      await beginAnalyzeFromPickerAsset(result.assets[0], { saveCapturedToLibrary: saveToLibrary });
+      await beginAnalyzeFromPickerAsset(result.assets[0], {
+        saveCapturedToLibrary: options?.saveToLibrary ?? saveToLibrary,
+      });
     } catch (err) {
       hapticError();
       setError(friendlyError(err, 'Could not analyze meal photo'));
@@ -946,17 +954,27 @@ export function LogMealSheet({
     });
   };
 
-  const handleChoosePhotoSource = () => {
+  /**
+   * `override` carries settings read straight from storage (see the auto-open
+   * effect below): the rendered `sourceMode`/`saveToLibrary` can still be the
+   * pre-hydration defaults on the very first render.
+   */
+  const handleChoosePhotoSource = (override?: Partial<PhotoCaptureSettings> | null) => {
     hapticLight();
-    if (sourceMode === 'camera') {
-      void handleTakePhoto();
-    } else if (sourceMode === 'library') {
+    const settings = resolvePhotoCaptureSettings({ sourceMode, saveToLibrary }, override);
+    const launch = resolvePhotoSourceLaunch(settings.sourceMode);
+    if (launch === 'camera') {
+      void handleTakePhoto({ saveToLibrary: settings.saveToLibrary });
+    } else if (launch === 'library') {
       void handlePickPhoto();
     } else {
       Alert.alert('Photo Estimate with AI', 'Choose photo source to analyze your meal:', [
         {
           text: 'Take Photo',
-          onPress: () => launchPhotoSourceAfterAlert(() => void handleTakePhoto()),
+          onPress: () =>
+            launchPhotoSourceAfterAlert(
+              () => void handleTakePhoto({ saveToLibrary: settings.saveToLibrary }),
+            ),
         },
         {
           text: 'Choose from Library',
@@ -979,7 +997,17 @@ export function LogMealSheet({
           if (cancelled) return;
           resetSheetState();
           void loadHistory();
-          if (autoOpenPicker) handleChoosePhotoSource();
+          if (autoOpenPicker) {
+            // Read the saved photo preference from storage rather than relying
+            // on the first render's values: the store only starts hydrating
+            // once the component has mounted, so a quick action launched from
+            // a cold start would otherwise always fall back to "Ask every
+            // time" — exactly the fast path the preference exists for.
+            void loadPhotoMealSettings().then((settings) => {
+              if (cancelled) return;
+              handleChoosePhotoSource(settings);
+            });
+          }
         },
         autoOpenPicker ? AUTO_OPEN_PICKER_DELAY_MS : 0,
       );
