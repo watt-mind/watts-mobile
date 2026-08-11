@@ -5,6 +5,7 @@ import { View } from 'react-native';
 
 import { useAuth } from '@/src/auth/AuthContext';
 import { Skeleton, SkeletonScreen } from '@/src/components/Skeleton';
+import { ActivationConnectivityNotice } from '@/src/features/activation/ActivationConnectivityNotice';
 import { ActivationUnavailable } from '@/src/features/activation/ActivationUnavailable';
 import { activationStepRank, canDismissActivationError } from '@/src/features/activation/mapStatus';
 import {
@@ -84,21 +85,24 @@ export default function ActivationLayout() {
   }
 
   return (
-    <Stack
-      screenOptions={{
-        headerShown: true,
-        headerStyle: { backgroundColor: theme.surface },
-        headerTintColor: theme.textPrimary,
-        contentStyle: { backgroundColor: theme.surface },
-        headerBackButtonDisplayMode: 'minimal',
-      }}
-    >
-      <Stack.Screen name="index" options={{ headerShown: false }} />
-      <Stack.Screen name="consent" options={{ title: 'Welcome' }} />
-      <Stack.Screen name="goal" options={{ title: 'Your goal' }} />
-      <Stack.Screen name="plan" options={{ title: 'Training plan' }} />
-      <Stack.Screen name="insight" options={{ title: 'Your week' }} />
-      <Stack.Screen name="connect" options={{ title: 'Connect data' }} />
-    </Stack>
+    <View className="flex-1 bg-surface">
+      <ActivationConnectivityNotice />
+      <Stack
+        screenOptions={{
+          headerShown: true,
+          headerStyle: { backgroundColor: theme.surface },
+          headerTintColor: theme.textPrimary,
+          contentStyle: { backgroundColor: theme.surface },
+          headerBackButtonDisplayMode: 'minimal',
+        }}
+      >
+        <Stack.Screen name="index" options={{ headerShown: false }} />
+        <Stack.Screen name="consent" options={{ title: 'Welcome' }} />
+        <Stack.Screen name="goal" options={{ title: 'Your goal' }} />
+        <Stack.Screen name="plan" options={{ title: 'Training plan' }} />
+        <Stack.Screen name="insight" options={{ title: 'Your week' }} />
+        <Stack.Screen name="connect" options={{ title: 'Connect data' }} />
+      </Stack>
+    </View>
   );
 }
