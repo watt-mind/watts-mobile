@@ -76,7 +76,12 @@ describe('resolveRecentWorkoutStatus', () => {
   it('keeps syncing while an attempt is in flight', () => {
     const status = resolveRecentWorkoutStatus(
       session({ platformSessionId: 'a' }),
-      ledger({ id: 'workout:a', status: 'syncing' }),
+      // An attempt is only believed to be in flight while it is recent (CW-352).
+      ledger({
+        id: 'workout:a',
+        status: 'syncing',
+        lastAttemptAt: new Date(Date.now() - 60 * 1000).toISOString(),
+      }),
       [],
     );
     expect(status).toBe('syncing');

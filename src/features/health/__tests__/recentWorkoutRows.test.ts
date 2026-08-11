@@ -4,10 +4,17 @@ import {
   buildRecentWorkoutRows,
   isUnsyncedRecentStatus,
   resolveRecentWorkoutStatus,
+  SYNCING_STALE_AFTER_MS,
 } from '../recentWorkoutRows';
 import type { PlatformWorkoutSession, RemoteWorkoutMatchCandidate, SyncLedgerItem } from '../types';
 
 describe('recentWorkoutRows', () => {
+  const NOW = Date.parse('2026-07-26T12:00:00Z');
+  /** Attempt that began well inside the staleness window — still plausibly running. */
+  const FRESH_ATTEMPT_AT = new Date(NOW - 60 * 1000).toISOString();
+  /** Attempt that began before the window — its writer is gone (app killed mid-attempt). */
+  const STALE_ATTEMPT_AT = new Date(NOW - SYNCING_STALE_AFTER_MS - 60 * 1000).toISOString();
+
   const sampleSession: PlatformWorkoutSession = {
     platformSessionId: 'sess-123',
     platform: 'healthkit',
@@ -42,9 +49,129 @@ describe('recentWorkoutRows', () => {
         platform: 'healthkit',
         title: 'Cycling',
         status: 'syncing',
+        lastAttemptAt: FRESH_ATTEMPT_AT,
+        attemptCount: 1,
+      };
+      expect(resolveRecentWorkoutStatus(sampleSession, ledger, [], NOW)).toBe('syncing');
+    });
+
+    it('honours a fresh syncing attempt even when the workout is already on the server', () => {
+      const ledger: SyncLedgerItem = {
+        id: 'w:healthkit:sess-123',
+        kind: 'workout',
+        platform: 'healthkit',
+        title: 'Cycling',
+        status: 'syncing',
+        lastAttemptAt: FRESH_ATTEMPT_AT,
+        attemptCount: 1,
+      };
+      expect(resolveRecentWorkoutStatus(sampleSession, ledger, [sampleRemote], NOW)).toBe(
+        'syncing',
+      );
+    });
+
+    it('resolves a stale syncing attempt to synced when the workout is on the server', () => {
+      const ledger: SyncLedgerItem = {
+        id: 'w:healthkit:sess-123',
+        kind: 'workout',
+        platform: 'healthkit',
+        title: 'Cycling',
+        status: 'syncing',
+        lastAttemptAt: STALE_ATTEMPT_AT,
+        attemptCount: 1,
+      };
+      expect(resolveRecentWorkoutStatus(sampleSession, ledger, [sampleRemote], NOW)).toBe('synced');
+    });
+
+    it('resolves a stale syncing attempt to needs_sync when there is no remote match', () => {
+      const ledger: SyncLedgerItem = {
+        id: 'w:healthkit:sess-123',
+        kind: 'workout',
+        platform: 'healthkit',
+        title: 'Cycling',
+        status: 'syncing',
+        lastAttemptAt: STALE_ATTEMPT_AT,
+        attemptCount: 1,
+      };
+      const status = resolveRecentWorkoutStatus(sampleSession, ledger, [], NOW);
+      expect(status).toBe('needs_sync');
+      // The row must become retryable, without widening the unsynced set itself.
+      expect(isUnsyncedRecentStatus(status)).toBe(true);
+    });
+
+    it('treats a syncing item with no lastAttemptAt as stale', () => {
+      const ledger: SyncLedgerItem = {
+        id: 'w:healthkit:sess-123',
+        kind: 'workout',
+        platform: 'healthkit',
+        title: 'Cycling',
+        status: 'syncing',
+        attemptCount: 1,
+      };
+      expect(resolveRecentWorkoutStatus(sampleSession, ledger, [], NOW)).toBe('needs_sync');
+      expect(resolveRecentWorkoutStatus(sampleSession, ledger, [sampleRemote], NOW)).toBe('synced');
+    });
+
+    it('treats an unparseable or future-dated lastAttemptAt as stale', () => {
+      const base: SyncLedgerItem = {
+        id: 'w:healthkit:sess-123',
+        kind: 'workout',
+        platform: 'healthkit',
+        title: 'Cycling',
+        status: 'syncing',
+        attemptCount: 1,
+      };
+      expect(
+        resolveRecentWorkoutStatus(
+          sampleSession,
+          { ...base, lastAttemptAt: 'not-a-date' },
+          [],
+          NOW,
+        ),
+      ).toBe('needs_sync');
+      // A backwards device-clock jump must not pin the row on Syncing forever.
+      const future = new Date(NOW + 24 * 60 * 60 * 1000).toISOString();
+      expect(
+        resolveRecentWorkoutStatus(sampleSession, { ...base, lastAttemptAt: future }, [], NOW),
+      ).toBe('needs_sync');
+    });
+
+    it('defaults now to the current clock so existing callers need no change', () => {
+      const ledger: SyncLedgerItem = {
+        id: 'w:healthkit:sess-123',
+        kind: 'workout',
+        platform: 'healthkit',
+        title: 'Cycling',
+        status: 'syncing',
+        lastAttemptAt: new Date(Date.now() - 60 * 1000).toISOString(),
         attemptCount: 1,
       };
       expect(resolveRecentWorkoutStatus(sampleSession, ledger, [])).toBe('syncing');
+
+      const stale: SyncLedgerItem = {
+        ...ledger,
+        lastAttemptAt: new Date(Date.now() - SYNCING_STALE_AFTER_MS - 1000).toISOString(),
+      };
+      expect(resolveRecentWorkoutStatus(sampleSession, stale, [])).toBe('needs_sync');
+    });
+
+    it('leaves non-syncing statuses untouched by the staleness check', () => {
+      const stalePending: SyncLedgerItem = {
+        id: 'w:healthkit:sess-123',
+        kind: 'workout',
+        platform: 'healthkit',
+        title: 'Cycling',
+        status: 'pending',
+        lastAttemptAt: STALE_ATTEMPT_AT,
+        attemptCount: 1,
+      };
+      expect(resolveRecentWorkoutStatus(sampleSession, stalePending, [], NOW)).toBe('pending');
+
+      const staleFailed: SyncLedgerItem = { ...stalePending, status: 'failed' };
+      expect(resolveRecentWorkoutStatus(sampleSession, staleFailed, [], NOW)).toBe('failed');
+
+      const staleSynced: SyncLedgerItem = { ...stalePending, status: 'synced' };
+      expect(resolveRecentWorkoutStatus(sampleSession, staleSynced, [], NOW)).toBe('synced');
     });
 
     it('returns synced if ledger status is synced or remote workout is matched', () => {
@@ -123,6 +250,48 @@ describe('recentWorkoutRows', () => {
 
       expect(rows[1]?.platformSessionId).toBe('sess-100');
       expect(rows[1]?.status).toBe('needs_sync');
+    });
+
+    it('threads now through so a stale syncing row is rescued, and a fresh one is not', () => {
+      const staleLedger: SyncLedgerItem = {
+        id: 'workout:sess-123',
+        kind: 'workout',
+        platform: 'healthkit',
+        title: 'Cycling',
+        status: 'syncing',
+        lastAttemptAt: STALE_ATTEMPT_AT,
+        attemptCount: 1,
+      };
+
+      const [stale] = buildRecentWorkoutRows([sampleSession], [], [staleLedger], NOW);
+      expect(stale?.status).toBe('needs_sync');
+      // Nothing was uploaded, so no remote id is invented and no error is shown.
+      expect(stale?.remoteWorkoutId).toBeUndefined();
+      expect(stale?.lastError).toBeUndefined();
+
+      const [fresh] = buildRecentWorkoutRows(
+        [sampleSession],
+        [],
+        [{ ...staleLedger, lastAttemptAt: FRESH_ATTEMPT_AT }],
+        NOW,
+      );
+      expect(fresh?.status).toBe('syncing');
+    });
+
+    it('resolves a stale syncing row to synced when the remote match exists', () => {
+      const staleLedger: SyncLedgerItem = {
+        id: 'workout:sess-123',
+        kind: 'workout',
+        platform: 'healthkit',
+        title: 'Cycling',
+        status: 'syncing',
+        lastAttemptAt: STALE_ATTEMPT_AT,
+        attemptCount: 1,
+      };
+
+      const [row] = buildRecentWorkoutRows([sampleSession], [sampleRemote], [staleLedger], NOW);
+      expect(row?.status).toBe('synced');
+      expect(row?.remoteWorkoutId).toBe('remote-789');
     });
   });
 });
