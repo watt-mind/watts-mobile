@@ -46,6 +46,7 @@ import {
   formatMacroGrams,
   localDateYmd,
   quickLogHasContent,
+  quickLogValidationError,
   toNutritionUploadPayload,
 } from '@/src/features/nutrition/mapNutrition';
 import {
@@ -798,6 +799,14 @@ export function LogMealSheet({
     if (!quickLogHasContent(form)) {
       hapticError();
       setError('Enter a meal name or select a history item.');
+      return;
+    }
+    // Same rules as the edit sheet (CW-349): unparseable or negative macros are
+    // rejected here rather than posted as missing/negative values.
+    const validationError = quickLogValidationError(form);
+    if (validationError) {
+      hapticError();
+      setError(validationError);
       return;
     }
     setError(null);
