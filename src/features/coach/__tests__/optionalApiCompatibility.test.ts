@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { transcribeChatAudio } from '../api';
+import { transcribeChatAudio, uploadChatImage } from '../api';
 import { fetchNutritionSettings } from '../../nutrition/nutritionSettingsApi';
 import { fetchQuotaAllowances } from '../../subscriptions/quotaApi';
 
@@ -69,6 +69,28 @@ describe('optional API compatibility', () => {
 
     expect(apiFetch).toHaveBeenCalledWith(
       '/api/chat/transcribe',
+      expect.objectContaining({
+        method: 'POST',
+        softUnauthorized: true,
+      }),
+    );
+  });
+
+  it('uploads chat images with non-destructive auth handling (CW-460)', async () => {
+    apiFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify({ url: 'https://cdn.example/img.jpg' }), { status: 200 }),
+    );
+
+    await expect(
+      uploadChatImage({
+        uri: 'file:///photo.jpg',
+        mediaType: 'image/jpeg',
+        filename: 'photo.jpg',
+      }),
+    ).resolves.toMatchObject({ url: 'https://cdn.example/img.jpg' });
+
+    expect(apiFetch).toHaveBeenCalledWith(
+      '/api/storage/upload',
       expect.objectContaining({
         method: 'POST',
         softUnauthorized: true,

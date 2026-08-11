@@ -70,7 +70,7 @@ export async function coachChatFetch(
   }
 
   try {
-    const refreshed = await singleFlightRefresh(instanceBaseUrl, tokens.refreshToken);
+    const refreshed = await singleFlightRefresh(instanceBaseUrl);
     const retryHeaders = new Headers(init?.headers);
     if (!retryHeaders.has('Accept')) {
       retryHeaders.set('Accept', 'text/plain, application/json');
@@ -84,8 +84,14 @@ export async function coachChatFetch(
   } catch (err) {
     if (isAuthTokenInvalidationError(err)) {
       await failAuthSession(sessionGeneration, `refresh invalidated for coach fetch`);
+      return response;
     }
-    return response;
+    // Refresh failed for a reason other than explicit token invalidation (network error,
+    // timeout, 5xx from the token endpoint). Mirror apiFetch (CW-135/CW-276): don't clear
+    // the session, but don't return the original stale 401 either — its status says nothing
+    // about *why* refresh failed, so callers would misclassify a transient connectivity or
+    // server problem as a genuine auth failure. Propagate the real error (CW-460).
+    throw err;
   }
 }
 
