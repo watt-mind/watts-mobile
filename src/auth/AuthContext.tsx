@@ -21,6 +21,7 @@ import { applyE2eAuthSeed, applyPendingE2eLogin, isE2eAuthEnabled } from '@/src/
 import { parseE2eLoginDeepLink } from '@/src/auth/e2eLoginDeepLink';
 import { loginWithPkce } from '@/src/auth/oauth';
 import { loadPendingE2eLogin, setPendingE2eLogin } from '@/src/auth/pendingE2eLogin';
+import { teardownSessionCaches } from '@/src/auth/sessionTeardown';
 import { clearTokens, loadTokens } from '@/src/auth/tokenStorage';
 import {
   getDefaultInstanceUrl,
@@ -85,6 +86,21 @@ type AuthContextValue = {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 const queryClient = createAppQueryClient();
+
+/**
+ * Every identity transition (sign-out, server-revoked refresh token, instance
+ * switch) tears the caches down through the one routine, so the
+ * cancel → memory → disk ordering is defined in a single place. See
+ * `sessionTeardown.ts` for why wiping disk first leaks the previous athlete's
+ * data across a cold launch.
+ */
+function teardownQueryCaches(): Promise<void> {
+  return teardownSessionCaches({
+    cancelQueries: () => queryClient.cancelQueries(),
+    clearMemoryCache: () => queryClient.clear(),
+    clearPersistedCache: () => clearPersistedQueryCache(),
+  });
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>('loading');
@@ -226,8 +242,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAuthFailureHandler(() => {
       setUser(null);
       setStatus((current) => (current === 'needs_instance' ? current : 'needs_login'));
-      queryClient.clear();
-      void clearPersistedQueryCache();
+      // Synchronous callback: fire and forget, but the helper still enforces the
+      // cancel → memory → disk order internally and never rejects.
+      void teardownQueryCaches();
       // A server-revoked refresh token signs the athlete out just as definitively
       // as tapping Sign out: the device must stop receiving that account's push
       // notifications, and the local token must be cleared so the pending
@@ -258,8 +275,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await clearConnectLater();
         await clearTokens();
         setUser(null);
-        queryClient.clear();
-        await clearPersistedQueryCache();
+        await teardownQueryCaches();
       }
       await setInstanceUrl(normalized);
       if (getAuthSessionGeneration() !== generation) {
@@ -310,14 +326,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       /* best-effort */
     }
     await clearTokens();
-    await clearPersistedQueryCache();
+    // Unconditional, exactly as the persisted-cache wipe was before: the caches
+    // must not survive a sign-out even if a newer transition raced us. The
+    // generation guard below still gates the React state updates.
+    await teardownQueryCaches();
     if (getAuthSessionGeneration() !== generation) {
       // A newer sign-in (or another sign-out) already took effect while this
       // sign-out was still cleaning up — don't clobber it with stale state.
       return;
     }
     setUser(null);
-    queryClient.clear();
     setStatus(instanceUrl ? 'needs_login' : 'needs_instance');
   }, [instanceUrl]);
 
