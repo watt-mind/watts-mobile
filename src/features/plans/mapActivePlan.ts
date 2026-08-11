@@ -1,4 +1,4 @@
-import { localDateKey } from '@/src/lib/date';
+import { dateKeysInRange, localDateKey } from '@/src/lib/date';
 
 import { humanizeBlockType } from './formatPlanCopy';
 import type {
@@ -166,21 +166,10 @@ export function filterPlannedToWeek<T extends { date?: string | null }>(
   });
 }
 
+/** Inclusive local day keys spanned by a plan week shell. */
 export function weekDateKeys(week: PlanWeekShell | null): string[] {
   if (!week?.startDateKey) return [];
-  const start = week.startDateKey;
-  const end = week.endDateKey ?? start;
-  const keys: string[] = [];
-  const cursor = new Date(`${start}T12:00:00`);
-  const endDate = new Date(`${end}T12:00:00`);
-  while (cursor <= endDate && keys.length < 14) {
-    const y = cursor.getFullYear();
-    const m = String(cursor.getMonth() + 1).padStart(2, '0');
-    const d = String(cursor.getDate()).padStart(2, '0');
-    keys.push(`${y}-${m}-${d}`);
-    cursor.setDate(cursor.getDate() + 1);
-  }
-  return keys;
+  return dateKeysInRange(week.startDateKey, week.endDateKey ?? week.startDateKey);
 }
 
 /** Percent along the season bar for “today”, or null if outside the plan. */

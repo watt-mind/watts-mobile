@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { weekRangeFromOffset } from '@/src/lib/date';
 import {
   mapGroceryItems,
   mapNutritionPlanDays,
@@ -7,7 +8,6 @@ import {
   mealHasSelection,
   resolveWindowKey,
   weekHasSelectedMeals,
-  weekRangeFromOffset,
 } from '../mapNutritionPlan';
 
 describe('mapNutritionPlanDays', () => {

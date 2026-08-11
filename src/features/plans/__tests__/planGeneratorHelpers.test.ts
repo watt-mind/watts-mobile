@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { localDateKey } from '@/src/lib/date';
+import { localDateKey, nextMondayYmd } from '@/src/lib/date';
 import { CRITICAL_TIME_ZONES, TZ_NEW_YORK, withTimeZone } from '@/src/test/timezone';
 
 import {
@@ -12,7 +12,6 @@ import {
   formatGenerateProgress,
   isPlanSpanValid,
   mapPhaseGlance,
-  nextMondayYmd,
   PLAN_GENERATE_TIMEOUT_MS,
   planDateIsoNoon,
   planEndDateIso,

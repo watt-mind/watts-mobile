@@ -1,5 +1,4 @@
-import { localDateYmd } from '@/src/lib/date';
-import { localDateKey } from '@/src/lib/date';
+import { localDateKey, localDateYmd } from '@/src/lib/date';
 import { ymdToLocalEndOfDayIso, ymdToLocalStartOfDayIso } from '@/src/lib/wireDate';
 
 import type { AvailabilityDay } from './api';
@@ -56,15 +55,6 @@ export function addWeeksToYmd(ymd: string, weeks: number): string {
   const date = new Date(y, m - 1, d);
   date.setDate(date.getDate() + Math.round(weeks) * 7);
   return localDateYmd(date);
-}
-
-/** Next Monday after `from` (if today is Monday, returns next week). */
-export function nextMondayYmd(from = new Date()): string {
-  const d = new Date(from.getFullYear(), from.getMonth(), from.getDate());
-  const day = d.getDay();
-  const daysUntil = day === 0 ? 1 : day === 1 ? 7 : 8 - day;
-  d.setDate(d.getDate() + daysUntil);
-  return localDateYmd(d);
 }
 
 export function clampDurationWeeks(weeks: number): number {
