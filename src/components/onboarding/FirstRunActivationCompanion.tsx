@@ -6,6 +6,7 @@ import { Button } from '@/src/components/Button';
 import { useActivationStatus } from '@/src/features/activation/useActivationStatus';
 import { hapticLight } from '@/src/lib/haptics';
 import { APP_HREFS } from '@/src/linking/appHrefs';
+import { useThemeColors } from '@/src/theme/useThemeColors';
 
 export type FirstRunActivationCompanionProps = {
   /** Optional custom title header */
@@ -47,6 +48,8 @@ export function FirstRunActivationCompanion({
   className,
 }: FirstRunActivationCompanionProps) {
   const { data: activation } = useActivationStatus();
+  // Called before the early return below so hook order stays stable.
+  const theme = useThemeColors();
 
   // If set to hide when data exists and user already has usable data, render nothing
   if (hideIfHasData && activation?.hasUsableData) {
@@ -100,7 +103,7 @@ export function FirstRunActivationCompanion({
     >
       {/* Icon Badge */}
       <View className="mb-3 h-12 w-12 items-center justify-center rounded-full bg-brand/10">
-        <AppSymbol sf="bolt.fill" size={24} tintColor="#22c55e" fallback="⚡" />
+        <AppSymbol sf="bolt.fill" size={24} tintColor={theme.successOnSurface} fallback="⚡" />
       </View>
 
       {/* Header & Subtitle */}
@@ -122,13 +125,18 @@ export function FirstRunActivationCompanion({
       {/* Quick Setup Checklist */}
       <View className="my-4 gap-2.5 rounded-xl border border-border/50 bg-surface p-3.5">
         <View className="flex-row items-center gap-2.5">
-          <AppSymbol sf="heart.fill" size={16} tintColor="#ef4444" fallback="❤️" />
+          <AppSymbol sf="heart.fill" size={16} tintColor={theme.dangerOnSurface} fallback="❤️" />
           <Text className="flex-1 text-xs font-medium text-text-primary">
             1. Sync Health data (Apple Health / Garmin / Strava)
           </Text>
         </View>
         <View className="flex-row items-center gap-2.5">
-          <AppSymbol sf="figure.run" size={16} tintColor="#3b82f6" fallback="🏃" />
+          <AppSymbol
+            sf="figure.run"
+            size={16}
+            tintColor={theme.macroProteinOnSurface}
+            fallback="🏃"
+          />
           <Text className="flex-1 text-xs font-medium text-text-primary">
             2. Log your first workout or daily check-in
           </Text>
@@ -137,7 +145,7 @@ export function FirstRunActivationCompanion({
           <AppSymbol
             sf="bubble.left.and.bubble.right"
             size={16}
-            tintColor="#a855f7"
+            tintColor={theme.macroFatOnSurface}
             fallback="💬"
           />
           <Text className="flex-1 text-xs font-medium text-text-primary">
