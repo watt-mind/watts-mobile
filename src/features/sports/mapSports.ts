@@ -1,5 +1,12 @@
+import type { DistanceUnits } from '@/src/features/profile/types';
 import { humanizeWorkoutType } from '@/src/lib/humanizeWorkoutType';
-import { mpsToPaceLabel, parsePaceToMps } from '@/src/lib/pace';
+import {
+  mpsToPaceLabel,
+  parsePaceToMps,
+  paceUnitDistanceName,
+  paceUnitLabel,
+  type PaceUnit,
+} from '@/src/lib/pace';
 
 import type { SportProfile, SportThresholdFormValues, SportThresholdPatch } from './types';
 
@@ -79,12 +86,47 @@ export function sportTypesSubtitle(profile: SportProfile): string | null {
   return `Also: ${extras.join(' · ')}`;
 }
 
-export function formFromSportProfile(profile: SportProfile): SportThresholdFormValues {
+/** True when the profile's sport is swum (pace is conventionally per 100 m). */
+export function isSwimSportProfile(profile: Pick<SportProfile, 'types' | 'name'>): boolean {
+  if (profile.types.some((type) => /swim/i.test(type))) return true;
+  return /swim/i.test(profile.name ?? '');
+}
+
+/**
+ * Resolve the ONE pace unit this profile's threshold is entered and displayed in
+ * (CW-483). Swim profiles use per-100m; everything else follows the athlete's
+ * `distanceUnits` preference, defaulting to per-km when the profile hasn't loaded.
+ */
+export function paceUnitForSport(
+  profile: Pick<SportProfile, 'types' | 'name'>,
+  distanceUnits: DistanceUnits | null | undefined = 'Kilometers',
+): PaceUnit {
+  if (isSwimSportProfile(profile)) return 'per-100m';
+  return distanceUnits === 'Miles' ? 'per-mile' : 'per-km';
+}
+
+/** Field label for the threshold pace input, e.g. `Threshold pace (min/100m)`. */
+export function thresholdPaceFieldLabel(unit: PaceUnit): string {
+  return `Threshold pace (${paceUnitLabel(unit)})`;
+}
+
+/** Helper text naming the single resolved unit, never three at once. */
+export function thresholdPaceHelperText(unit: PaceUnit): string {
+  return `Format mm:ss per ${paceUnitDistanceName(unit)} (e.g. ${
+    unit === 'per-100m' ? '1:45' : '5:15'
+  }).`;
+}
+
+export function formFromSportProfile(
+  profile: SportProfile,
+  paceUnit: PaceUnit = 'per-km',
+): SportThresholdFormValues {
   return {
     ftp: profile.ftp != null ? String(profile.ftp) : '',
     lthr: profile.lthr != null ? String(profile.lthr) : '',
     maxHr: profile.maxHr != null ? String(profile.maxHr) : '',
-    thresholdPace: profile.thresholdPace != null ? mpsToPaceLabel(profile.thresholdPace) : '',
+    thresholdPace:
+      profile.thresholdPace != null ? mpsToPaceLabel(profile.thresholdPace, '', paceUnit) : '',
   };
 }
 
@@ -100,17 +142,18 @@ function parseOptionalInt(value: string): number | null | undefined {
   return Math.round(n);
 }
 
-/** Parse a threshold pace field (mm:ss or decimal minutes-per-km) into m/s for the API. */
-function parseOptionalPace(value: string): number | null | undefined {
+/** Parse a threshold pace field (mm:ss or decimal minutes) into m/s for the API. */
+function parseOptionalPace(value: string, paceUnit: PaceUnit): number | null | undefined {
   const trimmed = value.trim();
   if (!trimmed) return null;
-  const mps = parsePaceToMps(trimmed);
+  const mps = parsePaceToMps(trimmed, paceUnit);
   return mps === undefined ? undefined : mps;
 }
 
 export function formHasInvalidNumbers(
   values: SportThresholdFormValues,
   includePace: boolean,
+  paceUnit: PaceUnit = 'per-km',
 ): boolean {
   if (values.ftp.trim() && parseOptionalInt(values.ftp) === undefined) return true;
   if (values.lthr.trim() && parseOptionalInt(values.lthr) === undefined) return true;
@@ -118,7 +161,7 @@ export function formHasInvalidNumbers(
   if (
     includePace &&
     values.thresholdPace.trim() &&
-    parseOptionalPace(values.thresholdPace) === undefined
+    parseOptionalPace(values.thresholdPace, paceUnit) === undefined
   ) {
     return true;
   }
@@ -128,6 +171,7 @@ export function formHasInvalidNumbers(
 export function toSportThresholdPatch(
   values: SportThresholdFormValues,
   includePace: boolean,
+  paceUnit: PaceUnit = 'per-km',
 ): SportThresholdPatch | null {
   const patch: SportThresholdPatch = {};
   const ftp = parseOptionalInt(values.ftp);
@@ -138,7 +182,7 @@ export function toSportThresholdPatch(
   patch.lthr = lthr;
   patch.maxHr = maxHr;
   if (includePace) {
-    const pace = parseOptionalPace(values.thresholdPace);
+    const pace = parseOptionalPace(values.thresholdPace, paceUnit);
     if (pace === undefined) return null;
     patch.thresholdPace = pace;
   }
