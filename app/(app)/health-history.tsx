@@ -10,7 +10,12 @@ import {
   formatLedgerStatusLabel,
 } from '@/src/features/health/ledgerHelpers';
 import { retryLedgerItem, runHealthSyncPass } from '@/src/features/health/orchestrator';
+import {
+  clearSyncDiagnostic,
+  describeSyncDiagnosticScope,
+} from '@/src/features/health/syncDiagnostics';
 import type { SyncLedgerItem, SyncLedgerStatus } from '@/src/features/health/types';
+import { useSyncDiagnostic } from '@/src/features/health/useSyncDiagnostic';
 import { useSyncLedger } from '@/src/features/health/useSyncLedger';
 import { hapticError, hapticLight, hapticSuccess } from '@/src/lib/haptics';
 import { useThemeColors } from '@/src/theme/useThemeColors';
@@ -73,8 +78,10 @@ function FilterChip({
 export default function HealthSyncHistoryScreen() {
   const theme = useThemeColors();
   const items = useSyncLedger();
+  const diagnostic = useSyncDiagnostic();
   const [filter, setFilter] = useState<Filter>('all');
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [syncingAll, setSyncingAll] = useState(false);
   const [resyncing, setResyncing] = useState(false);
 
@@ -83,10 +90,14 @@ export default function HealthSyncHistoryScreen() {
   const handleRetry = async (id: string) => {
     hapticLight();
     setBusyId(id);
+    setActionError(null);
     try {
       await retryLedgerItem(id);
       hapticSuccess();
-    } catch {
+    } catch (err) {
+      // Surface why the retry could not run — the reason is also written to the
+      // item's lastError, but a precondition failure needs to be visible now.
+      setActionError(err instanceof Error ? err.message : 'Retry failed');
       hapticError();
     } finally {
       setBusyId(null);
@@ -155,6 +166,28 @@ export default function HealthSyncHistoryScreen() {
           <Text className="mt-2 text-xs leading-4 text-text-muted">
             Resync all re-reads the full lookback window and re-uploads changed items.
           </Text>
+          {actionError ? (
+            <Text className="mt-2 text-xs leading-4 text-danger">{actionError}</Text>
+          ) : null}
+          {diagnostic ? (
+            <View className="mt-3 rounded-xl border border-danger/40 bg-danger/10 px-3 py-3">
+              <Text className="text-xs font-semibold text-danger">
+                {describeSyncDiagnosticScope(diagnostic.scope)} problem
+              </Text>
+              <Text className="mt-1 text-xs leading-4 text-danger" numberOfLines={3}>
+                {diagnostic.message}
+              </Text>
+              <Pressable
+                onPress={() => {
+                  hapticLight();
+                  void clearSyncDiagnostic();
+                }}
+                className="mt-2 self-start"
+              >
+                <Text className="text-xs font-semibold text-text-muted">Dismiss</Text>
+              </Pressable>
+            </View>
+          ) : null}
         </View>
 
         <ScrollView className="flex-1" contentContainerClassName="px-6 pb-12 pt-2">
@@ -170,7 +203,12 @@ export default function HealthSyncHistoryScreen() {
             </View>
           ) : (
             visible.map((item) => {
-              const canRetry = item.status === 'failed' || item.status === 'needs_sync';
+              // `pending` items are queued server-side and can stall — let the
+              // user force another attempt instead of stranding them (CW-463).
+              const canRetry =
+                item.status === 'failed' ||
+                item.status === 'needs_sync' ||
+                item.status === 'pending';
               const isBusy = busyId === item.id || item.status === 'syncing';
               return (
                 <View

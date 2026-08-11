@@ -29,12 +29,19 @@ export type OpenLinkResult = { ok: true } | { ok: false; message: string };
 /**
  * Opens an external link, returning copy the caller can surface. `mailto:` needs
  * its own message — telling someone to "visit mailto:…" is nonsense.
+ *
+ * Deliberately no `canOpenURL` pre-check: on Android targetSdk >= 30, package
+ * visibility filtering makes `canOpenURL('mailto:…')` return false unless the
+ * manifest declares a matching `<queries>` intent, so the gate reported "no mail
+ * app" on every device even with Gmail installed. `openURL` rejects on its own
+ * when nothing can handle the URL, which is the signal we actually want.
  */
-export async function openExternalUrl(url: string): Promise<OpenLinkResult> {
+export async function openExternalUrl(
+  url: string,
+  openURL: (target: string) => Promise<unknown> = (target) => Linking.openURL(target),
+): Promise<OpenLinkResult> {
   try {
-    const supported = await Linking.canOpenURL(url);
-    if (!supported) throw new Error('unsupported');
-    await Linking.openURL(url);
+    await openURL(url);
     return { ok: true };
   } catch {
     return {

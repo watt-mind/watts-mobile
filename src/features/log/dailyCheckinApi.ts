@@ -30,7 +30,13 @@ export async function fetchTodayDailyCheckin(): Promise<DailyCheckin | null> {
   }
   const text = await response.text();
   if (!text || text === 'null') return null;
-  return JSON.parse(text) as DailyCheckin;
+  try {
+    return JSON.parse(text) as DailyCheckin;
+  } catch {
+    // Non-JSON 200 bodies (captive portals, proxy HTML) must not surface a raw
+    // SyntaxError — the check-in card would sit stuck on "pending".
+    throw new Error("Failed to load today's check-in (unexpected response).");
+  }
 }
 
 export async function generateDailyCheckin(force = false): Promise<DailyCheckin> {
