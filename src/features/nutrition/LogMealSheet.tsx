@@ -47,6 +47,7 @@ import {
   localDateYmd,
   quickLogHasContent,
   quickLogValidationError,
+  toMealHistoryEntry,
   toNutritionUploadPayload,
 } from '@/src/features/nutrition/mapNutrition';
 import {
@@ -816,17 +817,8 @@ export function LogMealSheet({
       payload.date = selectedDateYmd;
       await logMutation.mutateAsync(payload);
 
-      const numCal = Number(form.calories);
-      const numProt = Number(form.protein);
-      const numCarbs = Number(form.carbs);
-      const numFat = Number(form.fat);
-      const updatedHistory = await saveMealToHistory({
-        name: form.name,
-        calories: Number.isFinite(numCal) && numCal > 0 ? numCal : undefined,
-        protein: Number.isFinite(numProt) && numProt > 0 ? numProt : undefined,
-        carbs: Number.isFinite(numCarbs) && numCarbs > 0 ? numCarbs : undefined,
-        fat: Number.isFinite(numFat) && numFat > 0 ? numFat : undefined,
-      });
+      // Same parsing as the upload above (CW-519) — raw Number() dropped comma decimals.
+      const updatedHistory = await saveMealToHistory(toMealHistoryEntry(form));
       setHistoryItems(updatedHistory);
 
       await enterLogged(mealName);
