@@ -22,7 +22,53 @@ type ApiFetchOptions = RequestInit & {
    * be session-only on older instances (e.g. integrations status).
    */
   softUnauthorized?: boolean;
+  /**
+   * Override the default request timeout (ms). Pass a non-positive value or `Infinity`
+   * to opt out of the timeout entirely (e.g. long-running streams).
+   */
+  timeoutMs?: number;
 };
+
+/** Default abort deadline for a JSON request — a stalled socket must not spin forever. */
+export const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+/** Multipart/FormData bodies are uploads over mobile links; they need a lot more headroom. */
+export const UPLOAD_REQUEST_TIMEOUT_MS = 120_000;
+
+function isMultipartBody(body: BodyInit | null | undefined): boolean {
+  return typeof FormData !== 'undefined' && body instanceof FormData;
+}
+
+function resolveTimeoutMs(options: ApiFetchOptions): number {
+  if (typeof options.timeoutMs === 'number') {
+    return options.timeoutMs;
+  }
+  return isMultipartBody(options.body) ? UPLOAD_REQUEST_TIMEOUT_MS : DEFAULT_REQUEST_TIMEOUT_MS;
+}
+
+/**
+ * Build the AbortSignal for one attempt (CW-459). A caller-supplied signal is always
+ * honoured; the default timeout is composed onto it via `AbortSignal.any` when available
+ * (Expo's winter runtime polyfills both `any` and `timeout` — see expo/src/winter/AbortSignal).
+ * If a runtime lacks them, the caller's signal wins and the timeout is skipped rather than
+ * silently discarding the caller's cancellation.
+ */
+function resolveRequestSignal(options: ApiFetchOptions): AbortSignal | undefined {
+  const callerSignal = options.signal ?? undefined;
+  const timeoutMs = resolveTimeoutMs(options);
+
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0 || typeof AbortSignal?.timeout !== 'function') {
+    return callerSignal;
+  }
+
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  if (!callerSignal) {
+    return timeoutSignal;
+  }
+  if (typeof AbortSignal.any === 'function') {
+    return AbortSignal.any([callerSignal, timeoutSignal]);
+  }
+  return callerSignal;
+}
 
 let refreshPromise: Promise<StoredTokens> | null = null;
 let refreshPromiseGeneration = -1;
@@ -147,10 +193,20 @@ export async function apiFetch(path: string, options: ApiFetchOptions = {}): Pro
       retryHeaders.set('Accept', 'application/json');
     }
     retryHeaders.set('Authorization', `Bearer ${accessToken}`);
-    return fetch(url, { ...options, headers: retryHeaders });
+    // Fresh signal: the retry gets its own timeout budget rather than inheriting the
+    // (possibly nearly exhausted) deadline of the first attempt.
+    return fetch(url, {
+      ...options,
+      headers: retryHeaders,
+      signal: resolveRequestSignal(options),
+    });
   };
 
-  const response = await fetch(url, { ...options, headers });
+  const response = await fetch(url, {
+    ...options,
+    headers,
+    signal: resolveRequestSignal(options),
+  });
 
   if (response.status !== 401 || options.skipAuth) {
     return response;

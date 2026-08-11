@@ -43,6 +43,9 @@ export async function submitChatToolApproval(params: {
       'Content-Type': 'application/json',
       Accept: 'text/event-stream, application/json',
     },
+    // The response is an SSE stream covering a whole agent turn, which legitimately
+    // outlives the default request deadline — opt out rather than aborting mid-turn.
+    timeoutMs: 0,
     body: JSON.stringify({
       roomId: params.roomId,
       messages: [
