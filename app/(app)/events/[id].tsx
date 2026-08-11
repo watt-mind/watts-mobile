@@ -2,7 +2,7 @@
  * Event detail — linked goals navigate into Goals hub.
  */
 import { router, Stack, useLocalSearchParams, type Href } from 'expo-router';
-import { Linking, ScrollView, Text, View } from 'react-native';
+import { Alert, Linking, ScrollView, Text, View } from 'react-native';
 
 import { friendlyError } from '@/src/api/errors';
 import { useAuth } from '@/src/auth/AuthContext';
@@ -16,6 +16,7 @@ import { openInstanceWeb } from '@/src/features/account/openInstanceWeb';
 import { eventWebPath } from '@/src/features/events/mapEvents';
 import type { EventDetail } from '@/src/features/events/types';
 import { useEventDetailQuery } from '@/src/features/events/useEvents';
+import { normalizeWebsiteUrl } from '@/src/features/events/websiteUrl';
 import { goalStatusLabel } from '@/src/features/goals/mapGoals';
 import { useOfflineCached } from '@/src/hooks/useOfflineCached';
 import { hapticLight } from '@/src/lib/haptics';
@@ -53,8 +54,13 @@ export default function EventDetailScreen() {
   };
 
   const openWebsite = async () => {
-    if (!data?.websiteUrl) return;
-    await Linking.openURL(data.websiteUrl);
+    const url = normalizeWebsiteUrl(data?.websiteUrl);
+    if (!url) return;
+    try {
+      await Linking.openURL(url);
+    } catch {
+      Alert.alert('Could not open website', `Visit ${url} in your browser.`);
+    }
   };
 
   return (
