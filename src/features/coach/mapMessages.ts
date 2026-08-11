@@ -651,6 +651,20 @@ export function applyAssistantTextDelta(
 
   if (existingIndex >= 0) {
     const existingMessage = messages[existingIndex];
+    const incomingStatus = event.status || 'STREAMING';
+    // Four writers race into the same list (SSE stream, WS delta, WS upsert,
+    // reply poll), so a delta frame can land after the turn already finished.
+    // Applying it would append stray text and flip `turnStatus` back to an
+    // active value, resurrecting the typing indicator for a completed turn
+    // (CW-338). Mirrors the `mergeRealtimeMessage` guard: only a terminal
+    // existing status paired with an active incoming one is dropped, so the
+    // legitimate completing frame still applies.
+    if (
+      isTerminalTurnStatus(existingMessage?.metadata?.turnStatus) &&
+      isActiveTurnStatus(incomingStatus)
+    ) {
+      return messages;
+    }
     const existingParts = Array.isArray(existingMessage?.parts) ? existingMessage.parts : [];
     const nonTextParts = existingParts.filter((part) => part?.type !== 'text');
     const nextText = `${typeof existingMessage?.content === 'string' ? existingMessage.content : ''}${event.textDelta}`;
@@ -662,7 +676,7 @@ export function applyAssistantTextDelta(
       metadata: {
         ...(existingMessage?.metadata || {}),
         turnId: event.turnId,
-        turnStatus: event.status || 'STREAMING',
+        turnStatus: incomingStatus,
       },
     };
     return nextMessages;
