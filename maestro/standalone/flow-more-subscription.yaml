@@ -1,0 +1,8 @@
+# Standalone: More → Subscription (wipe + login).
+# Auth: on (e2e seed). Read-only — no purchase or restore is ever triggered.
+appId: com.coachwatts.app
+tags:
+  - standalone
+---
+- runFlow: ../subflows/boot-and-login.yaml
+- runFlow: ../scenarios/more-subscription.yaml

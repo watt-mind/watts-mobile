@@ -166,7 +166,7 @@ export function PlanChooser({
   }
 
   return (
-    <View>
+    <View testID="subscription-plan-chooser">
       {hasAnnual ? (
         <PeriodToggle value={period} annualSaving={bestAnnualSaving} onChange={setChosenPeriod} />
       ) : null}
@@ -175,10 +175,13 @@ export function PlanChooser({
         const kind = planChangeKind({ pkg: item, currentTier, activeProductIds });
         const isCurrent = kind === 'current';
         const recommended = item.tier === highlightTier && !isCurrent;
+        // Stable across price/copy changes: tier + period, never the store product id.
+        const planTestID = `subscription-plan-${item.tier.toLowerCase()}-${item.period.toLowerCase()}`;
 
         return (
           <View
             key={`${item.tier}:${item.period}:${item.id}`}
+            testID={planTestID}
             className={`mt-4 rounded-2xl border bg-card p-5 ${
               isCurrent
                 ? 'border-brand/40 bg-brand/5'
@@ -247,6 +250,7 @@ export function PlanChooser({
             </View>
 
             <Button
+              testID={`${planTestID}-cta`}
               className="mt-5"
               label={planActionLabel(kind, item)}
               disabled={isCurrent || busy}

@@ -55,6 +55,7 @@ export function QuotaLimitCard({ info, surface, onDismiss, compact = false, clas
 
   return (
     <View
+      testID="quota-limit-card"
       accessibilityLiveRegion="polite"
       className={`rounded-2xl border border-modify/40 bg-modify/10 ${compact ? 'p-4' : 'p-5'} ${
         className ?? ''
