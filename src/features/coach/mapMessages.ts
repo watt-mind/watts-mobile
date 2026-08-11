@@ -581,17 +581,59 @@ export function mergeRealtimeMessage(
   return nextIncoming;
 }
 
+function messageTimeMs(message: CoachUIMessage | undefined | null): number | null {
+  const raw = message?.createdAt;
+  if (!raw) return null;
+  const time = new Date(raw).getTime();
+  return Number.isFinite(time) ? time : null;
+}
+
+/**
+ * Fold a server load into the live message list.
+ *
+ * Union by id rather than replace. A background/poll load that lands mid-send
+ * used to wipe every local-only row — the ai-sdk optimistic user bubble before
+ * the server has persisted it, the in-flight SSE assistant message, a realtime
+ * draft from `applyAssistantTextDelta` — so the athlete's own message vanished
+ * and reappeared moments later (CW-494c). Local rows are kept only while they
+ * are newer than everything the server returned, and only when the server has
+ * not already returned the same message under a different id.
+ */
 export function mergeLoadedMessages(
   existingMessages: CoachUIMessage[],
   loadedMessages: CoachUIMessage[],
 ): CoachUIMessage[] {
   const existingById = new Map(existingMessages.map((message) => [message?.id, message]));
 
-  return loadedMessages.map((loadedMessage) => {
+  const merged = loadedMessages.map((loadedMessage) => {
     const existingMessage = existingById.get(loadedMessage?.id);
     if (!existingMessage) return loadedMessage;
     return mergeRealtimeMessage(existingMessage, loadedMessage);
   });
+
+  const loadedIds = new Set(loadedMessages.map((message) => message?.id));
+  let newestLoadedAt = 0;
+  const loadedRoleTexts = new Set<string>();
+  for (const message of loadedMessages) {
+    const time = messageTimeMs(message);
+    if (time !== null && time > newestLoadedAt) newestLoadedAt = time;
+    const text = messageText(message).trim();
+    if (text) loadedRoleTexts.add(`${message?.role}:${text}`);
+  }
+
+  const localOnly = existingMessages.filter((message) => {
+    if (!message || loadedIds.has(message.id)) return false;
+    // No timestamp means it was just created client-side — treat it as newest.
+    const time = messageTimeMs(message);
+    if (time !== null && time < newestLoadedAt) return false;
+    // The server may persist an optimistic message under its own id; dropping
+    // it here avoids a duplicate bubble that would never resolve itself.
+    const text = messageText(message).trim();
+    if (text && loadedRoleTexts.has(`${message.role}:${text}`)) return false;
+    return true;
+  });
+
+  return localOnly.length > 0 ? [...merged, ...localOnly] : merged;
 }
 
 export function applyAssistantTextDelta(
