@@ -160,3 +160,24 @@ export function computeWeekGlance(
     days,
   };
 }
+
+export type WeekGlanceStripState = { status: 'loading' } | { status: 'ready'; glance: WeekGlance };
+
+/**
+ * Decide what the Today "This week" strip renders. Kept pure (and out of the .tsx)
+ * so the loading/ready decision is testable — the completed side is fed by the
+ * date-ranged glance query, which is pending on first paint (CW-489).
+ */
+export function resolveWeekGlanceStripState(input: {
+  workouts: ActivityListItem[] | undefined;
+  planned: PlannedListItem[] | undefined;
+  /** True while the week-ranged workouts query has no data yet. */
+  workoutsPending: boolean;
+  now?: Date;
+}): WeekGlanceStripState {
+  if (input.workouts == null && input.workoutsPending) return { status: 'loading' };
+  return {
+    status: 'ready',
+    glance: computeWeekGlance(input.workouts, input.planned, input.now ?? new Date()),
+  };
+}
