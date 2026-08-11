@@ -1,8 +1,9 @@
 /* Hallmark · genre: modern-minimal · design-system: docs/DESIGN.md · designed-as-app */
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, PanResponder, Pressable, Text, View } from 'react-native';
+import { PanResponder, Pressable, Text, View } from 'react-native';
 
 import { AppSymbol } from '@/src/components/AppSymbol';
+import { Spinner } from '@/src/components/Spinner';
 import { useAthleteProfileQuery } from '@/src/features/profile/useProfile';
 import { hapticLight } from '@/src/lib/haptics';
 import { NutritionAccents } from '@/src/theme/nutritionAccents';
@@ -159,7 +160,7 @@ export function NutritionTargetsCard({
       <View
         className={`items-center justify-center rounded-xl border border-border bg-card p-4 ${className}`}
       >
-        <ActivityIndicator color={theme.brandOnSurface} />
+        <Spinner />
       </View>
     );
   }

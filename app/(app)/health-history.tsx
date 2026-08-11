@@ -1,10 +1,11 @@
 /* Hallmark · genre: modern-minimal · design-system: docs/DESIGN.md · designed-as-app */
 import { Stack } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
+import { Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-screens/experimental';
 
 import { Button } from '@/src/components/Button';
+import { Spinner } from '@/src/components/Spinner';
 import {
   filterLedgerByAttention,
   formatLedgerStatusLabel,
@@ -235,7 +236,7 @@ export default function HealthSyncHistoryScreen() {
                   {canRetry ? (
                     <View className="mt-3">
                       {isBusy ? (
-                        <ActivityIndicator color={theme.brandOnSurface} />
+                        <Spinner />
                       ) : (
                         <Button
                           label="Retry"

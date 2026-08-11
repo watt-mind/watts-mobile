@@ -1,17 +1,10 @@
 import { useMemo, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  Pressable,
-  ScrollView,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { Alert, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
 import { friendlyError } from '@/src/api/errors';
 import { useAuth } from '@/src/auth/AuthContext';
 import { Button } from '@/src/components/Button';
+import { Spinner } from '@/src/components/Spinner';
 import { weightUnit } from '@/src/features/profile/mapProfile';
 import { useAthleteProfileQuery } from '@/src/features/profile/useProfile';
 import { hapticError, hapticLight, hapticSuccess } from '@/src/lib/haptics';
@@ -320,9 +313,7 @@ export function MeasurementsSection() {
         </Pressable>
       </View>
 
-      {isLoading && !data ? (
-        <ActivityIndicator className="mt-4" color={theme.brandOnSurface} />
-      ) : null}
+      {isLoading && !data ? <Spinner className="mt-4" /> : null}
 
       {isError ? (
         <View className="mt-3 rounded-xl border border-danger/40 bg-tint-error p-3">

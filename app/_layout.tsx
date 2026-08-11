@@ -4,7 +4,7 @@ import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import { View } from 'react-native';
 import 'react-native-gesture-handler';
 import 'react-native-reanimated';
 
@@ -13,6 +13,7 @@ import type { ErrorBoundaryProps } from 'expo-router';
 import { AuthProvider, useAuth } from '@/src/auth/AuthContext';
 import { ActionSheetPortal } from '@/src/components/ActionSheet';
 import { ErrorFallback } from '@/src/components/ErrorFallback';
+import { Spinner } from '@/src/components/Spinner';
 import { hideDevMenuFab } from '@/src/dev/hideDevMenuFab';
 import { AuthAtmosphere } from '@/src/features/auth/AuthAtmosphere';
 import { useDeepLinkReturn } from '@/src/linking/useDeepLinkReturn';
@@ -54,7 +55,7 @@ function RootNavigator() {
     return (
       <View className="flex-1 items-center justify-center bg-surface">
         <AuthAtmosphere />
-        <ActivityIndicator color={theme.brandOnSurface} size="large" />
+        <Spinner size="large" />
       </View>
     );
   }

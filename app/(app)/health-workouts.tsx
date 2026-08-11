@@ -2,19 +2,12 @@
 import { useQuery } from '@tanstack/react-query';
 import { Stack, type Href, router } from 'expo-router';
 import { useMemo, useState } from 'react';
-import {
-  ActivityIndicator,
-  Platform,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  Text,
-  View,
-} from 'react-native';
+import { Platform, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-screens/experimental';
 
 import { Button } from '@/src/components/Button';
 import { ListSkeleton } from '@/src/components/Skeleton';
+import { Spinner } from '@/src/components/Spinner';
 import { formatLedgerStatusLabel } from '@/src/features/health/ledgerHelpers';
 import {
   syncUnsyncedWorkouts,
@@ -254,7 +247,7 @@ export default function HealthRecentWorkoutsScreen() {
                     </View>
                     <View className="mt-3">
                       {isBusy ? (
-                        <ActivityIndicator color={theme.brandOnSurface} />
+                        <Spinner />
                       ) : unsynced ? (
                         <Button
                           label="Sync"
