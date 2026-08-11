@@ -76,11 +76,20 @@ export function completeLedgerSuccess(
   };
 }
 
+/**
+ * Mark an item failed. An item that is already `synced` is never downgraded —
+ * its data is on the server, and flipping it to `failed` (e.g. from an
+ * unrelated pass-level error) would show a bogus "Failed" row with a Retry
+ * button for work that actually succeeded (CW-461). A genuine re-upload
+ * attempt always goes through beginLedgerAttempt first, so it is `syncing`
+ * by the time it can fail here.
+ */
 export function completeLedgerFailure(
   item: SyncLedgerItem,
   error: string,
   at: string = new Date().toISOString(),
 ): SyncLedgerItem {
+  if (item.status === 'synced') return item;
   return {
     ...item,
     status: 'failed',

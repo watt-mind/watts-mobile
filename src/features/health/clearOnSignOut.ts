@@ -1,6 +1,7 @@
 import { unregisterHealthSyncBackgroundTask } from './backgroundTask';
 import { clearSyncLedger } from './ledger';
 import { awaitInFlightHealthSyncPass, bumpHealthSyncGeneration } from './orchestrator';
+import { clearSyncDiagnostic } from './syncDiagnostics';
 import { clearHealthSyncPreferences } from './syncPreferences';
 import { clearWatermarks } from './watermarks';
 
@@ -22,5 +23,10 @@ export async function clearHealthSyncOnSignOut(): Promise<void> {
   } catch {
     // ignore
   }
-  await Promise.all([clearSyncLedger(), clearHealthSyncPreferences(), clearWatermarks()]);
+  await Promise.all([
+    clearSyncLedger(),
+    clearHealthSyncPreferences(),
+    clearWatermarks(),
+    clearSyncDiagnostic(),
+  ]);
 }

@@ -10,7 +10,12 @@ import {
   formatLedgerStatusLabel,
 } from '@/src/features/health/ledgerHelpers';
 import { retryLedgerItem, runHealthSyncPass } from '@/src/features/health/orchestrator';
+import {
+  clearSyncDiagnostic,
+  describeSyncDiagnosticScope,
+} from '@/src/features/health/syncDiagnostics';
 import type { SyncLedgerItem, SyncLedgerStatus } from '@/src/features/health/types';
+import { useSyncDiagnostic } from '@/src/features/health/useSyncDiagnostic';
 import { useSyncLedger } from '@/src/features/health/useSyncLedger';
 import { hapticError, hapticLight, hapticSuccess } from '@/src/lib/haptics';
 import { useThemeColors } from '@/src/theme/useThemeColors';
@@ -73,6 +78,7 @@ function FilterChip({
 export default function HealthSyncHistoryScreen() {
   const theme = useThemeColors();
   const items = useSyncLedger();
+  const diagnostic = useSyncDiagnostic();
   const [filter, setFilter] = useState<Filter>('all');
   const [busyId, setBusyId] = useState<string | null>(null);
   const [syncingAll, setSyncingAll] = useState(false);
@@ -155,6 +161,25 @@ export default function HealthSyncHistoryScreen() {
           <Text className="mt-2 text-xs leading-4 text-text-muted">
             Resync all re-reads the full lookback window and re-uploads changed items.
           </Text>
+          {diagnostic ? (
+            <View className="mt-3 rounded-xl border border-danger/40 bg-danger/10 px-3 py-3">
+              <Text className="text-xs font-semibold text-danger">
+                {describeSyncDiagnosticScope(diagnostic.scope)} problem
+              </Text>
+              <Text className="mt-1 text-xs leading-4 text-danger" numberOfLines={3}>
+                {diagnostic.message}
+              </Text>
+              <Pressable
+                onPress={() => {
+                  hapticLight();
+                  void clearSyncDiagnostic();
+                }}
+                className="mt-2 self-start"
+              >
+                <Text className="text-xs font-semibold text-text-muted">Dismiss</Text>
+              </Pressable>
+            </View>
+          ) : null}
         </View>
 
         <ScrollView className="flex-1" contentContainerClassName="px-6 pb-12 pt-2">
