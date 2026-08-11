@@ -72,6 +72,120 @@ describe('mapMessages', () => {
     expect(hasActiveTurn(next)).toBe(true);
   });
 
+  it('drops a stale text delta that would revive a completed message', () => {
+    const initial: CoachUIMessage[] = [
+      {
+        id: 'a1',
+        role: 'assistant',
+        content: 'All done.',
+        parts: [{ type: 'text', text: 'All done.' }],
+        metadata: { turnId: 'turn-1', turnStatus: 'COMPLETED' },
+      },
+    ];
+
+    const next = applyAssistantTextDelta(initial, {
+      messageId: 'a1',
+      turnId: 'turn-1',
+      textDelta: ' stray',
+      status: 'STREAMING',
+    });
+
+    expect(messageText(next[0])).toBe('All done.');
+    expect(next[0]?.metadata?.turnStatus).toBe('COMPLETED');
+    expect(hasActiveTurn(next)).toBe(false);
+  });
+
+  it('drops a stale text delta with no status onto a completed message', () => {
+    const initial: CoachUIMessage[] = [
+      {
+        id: 'a1',
+        role: 'assistant',
+        content: 'All done.',
+        parts: [{ type: 'text', text: 'All done.' }],
+        metadata: { turnId: 'turn-1', turnStatus: 'COMPLETED' },
+      },
+    ];
+
+    const next = applyAssistantTextDelta(initial, {
+      messageId: 'a1',
+      turnId: 'turn-1',
+      textDelta: ' stray',
+    });
+
+    expect(messageText(next[0])).toBe('All done.');
+    expect(next[0]?.metadata?.turnStatus).toBe('COMPLETED');
+    expect(hasActiveTurn(next)).toBe(false);
+  });
+
+  it('still applies a delta that carries its own terminal status', () => {
+    const initial: CoachUIMessage[] = [
+      {
+        id: 'a1',
+        role: 'assistant',
+        content: 'All done',
+        parts: [{ type: 'text', text: 'All done' }],
+        metadata: { turnId: 'turn-1', turnStatus: 'COMPLETED' },
+      },
+    ];
+
+    const next = applyAssistantTextDelta(initial, {
+      messageId: 'a1',
+      turnId: 'turn-1',
+      textDelta: '.',
+      status: 'COMPLETED',
+    });
+
+    expect(messageText(next[0])).toBe('All done.');
+    expect(next[0]?.metadata?.turnStatus).toBe('COMPLETED');
+    expect(hasActiveTurn(next)).toBe(false);
+  });
+
+  it('still appends an active delta to a streaming message', () => {
+    const initial: CoachUIMessage[] = [
+      {
+        id: 'a1',
+        role: 'assistant',
+        content: 'Nearly',
+        parts: [{ type: 'text', text: 'Nearly' }],
+        metadata: { turnId: 'turn-1', turnStatus: 'STREAMING' },
+      },
+    ];
+
+    const next = applyAssistantTextDelta(initial, {
+      messageId: 'a1',
+      turnId: 'turn-1',
+      textDelta: ' there',
+      status: 'STREAMING',
+    });
+
+    expect(messageText(next[0])).toBe('Nearly there');
+    expect(next[0]?.metadata?.turnStatus).toBe('STREAMING');
+    expect(hasActiveTurn(next)).toBe(true);
+  });
+
+  it('still appends a new realtime draft when the delta targets an unknown message', () => {
+    const initial: CoachUIMessage[] = [
+      {
+        id: 'a1',
+        role: 'assistant',
+        content: 'All done.',
+        parts: [{ type: 'text', text: 'All done.' }],
+        metadata: { turnId: 'turn-1', turnStatus: 'COMPLETED' },
+      },
+    ];
+
+    const next = applyAssistantTextDelta(initial, {
+      messageId: 'a2',
+      turnId: 'turn-2',
+      textDelta: 'Next',
+    });
+
+    expect(next).toHaveLength(2);
+    expect(messageText(next[1])).toBe('Next');
+    expect(next[1]?.metadata?.turnStatus).toBe('STREAMING');
+    expect(next[1]?.metadata?.isRealtimeDraft).toBe(true);
+  });
+
   it('does not regress terminal turn status when merging a stale active upsert', () => {
     const existing = transformStoredMessage({
       id: 'a1',
