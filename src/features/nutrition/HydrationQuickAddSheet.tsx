@@ -96,9 +96,9 @@ export function HydrationQuickAddSheet({
           )}
 
           <View className="gap-2.5">
-            {presets.map((p) => (
+            {presets.map((p, index) => (
               <Pressable
-                key={p.ml}
+                key={`${p.ml}-${index}`}
                 accessibilityRole="button"
                 accessibilityLabel={`Add ${p.label}`}
                 className="flex-row items-center justify-between rounded-xl border border-border bg-card px-4 py-3.5 active:opacity-80"
