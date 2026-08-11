@@ -1,5 +1,6 @@
 import { localDateYmd } from '@/src/features/log/mapLogForm';
 import { localDateKey } from '@/src/features/today/weekGlance';
+import { ymdToLocalEndOfDayIso, ymdToLocalStartOfDayIso } from '@/src/lib/wireDate';
 
 import type { AvailabilityDay } from './api';
 import type { PlanInitializeResult, PlanStrategy, StartingPhase, VolumePreference } from './types';
@@ -27,14 +28,26 @@ export type PhaseGlance = {
   type: string | null;
 };
 
-/** Local calendar YYYY-MM-DD → initialize/activate ISO at UTC noon (matches goal create). */
-export function planDateIsoNoon(ymd: string): string {
-  return new Date(`${ymd}T12:00:00.000Z`).toISOString();
+/**
+ * Local calendar YYYY-MM-DD → initialize/activate `startDate`.
+ *
+ * CW-493: `/api/plans/initialize` validates `z.string().datetime()` (so a bare
+ * YYYY-MM-DD is rejected) and then re-derives the calendar day from the
+ * instant using the athlete's stored timezone. A fixed UTC hour therefore
+ * lands on the wrong day at the extremes — UTC noon is a day late at UTC+12,
+ * UTC midnight a day early at UTC-5 — so the instant of *local* midnight is
+ * sent, matching the web PlanWizard.
+ */
+export function planStartDateIso(ymd: string): string {
+  return ymdToLocalStartOfDayIso(ymd);
 }
 
-/** End-of-day ISO for initialize `endDate` (web PlanWizard uses 23:59:59). */
+/** @deprecated Misnomer since CW-493 — the anchor is local midnight, not UTC noon. Use `planStartDateIso`. */
+export const planDateIsoNoon = planStartDateIso;
+
+/** End-of-day ISO for initialize `endDate`, anchored to the athlete's local day (CW-493). */
 export function planEndDateIso(ymd: string): string {
-  return new Date(`${ymd}T23:59:59.000Z`).toISOString();
+  return ymdToLocalEndOfDayIso(ymd);
 }
 
 export function addWeeksToYmd(ymd: string, weeks: number): string {

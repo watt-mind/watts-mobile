@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
+import { localDateKey } from '@/src/features/today/weekGlance';
+import { CRITICAL_TIME_ZONES, withTimeZone } from '@/src/test/timezone';
+
 import {
   buildCreateGoalInput,
   validateGoalCreateForm,
@@ -35,7 +38,7 @@ describe('buildCreateGoal', () => {
     expect(input.type).toBe('EVENT');
     expect(input.eventData).toEqual({
       title: 'Gran fondo',
-      date: '2026-10-15T12:00:00.000Z',
+      date: '2026-10-15T00:00:00.000Z',
       type: 'RACE',
     });
   });
@@ -46,5 +49,15 @@ describe('buildCreateGoal', () => {
     expect(input.targetValue).toBe(280);
     expect(input.startValue).toBe(250);
     expect(input.priority).toBe('MEDIUM');
+  });
+
+  // CW-493: a UTC-noon anchor put the goal deadline a day late at UTC+12.
+  it('round-trips the picked target date in every zone', () => {
+    for (const tz of CRITICAL_TIME_ZONES) {
+      withTimeZone(tz, () => {
+        const input = buildCreateGoalInput(base({ targetDate: '2026-10-15' }));
+        expect(localDateKey(input.targetDate)).toBe('2026-10-15');
+      });
+    }
   });
 });

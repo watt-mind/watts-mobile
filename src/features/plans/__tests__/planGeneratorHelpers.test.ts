@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { localDateKey } from '@/src/features/today/weekGlance';
 import { CRITICAL_TIME_ZONES, TZ_NEW_YORK, withTimeZone } from '@/src/test/timezone';
 
 import {
@@ -55,9 +56,20 @@ describe('buildAvailabilityDays', () => {
 });
 
 describe('plan calendar helpers', () => {
-  it('builds noon/end ISO from YMD', () => {
-    expect(planDateIsoNoon('2026-07-24')).toBe('2026-07-24T12:00:00.000Z');
-    expect(planEndDateIso('2026-10-15')).toBe('2026-10-15T23:59:59.000Z');
+  // CW-493: /api/plans/initialize re-derives the calendar day from the instant
+  // using the athlete's stored timezone, so the anchor must be local midnight
+  // (a fixed UTC hour is a day out at the extremes).
+  it('builds start/end ISO anchored to the athlete local day', () => {
+    for (const tz of CRITICAL_TIME_ZONES) {
+      withTimeZone(tz, () => {
+        const start = new Date(planDateIsoNoon('2026-07-24'));
+        expect(localDateKey(start)).toBe('2026-07-24');
+        expect(start.getHours()).toBe(0);
+        const end = new Date(planEndDateIso('2026-10-15'));
+        expect(localDateKey(end)).toBe('2026-10-15');
+        expect(end.getHours()).toBe(23);
+      });
+    }
   });
 
   it('adds weeks on the local calendar', () => {
