@@ -11,12 +11,16 @@ import {
   displaySportName,
   formFromSportProfile,
   formHasInvalidNumbers,
+  paceUnitForSport,
   showThresholdPace,
   sportSettingsWebPath,
+  thresholdPaceFieldLabel,
+  thresholdPaceHelperText,
   toSportThresholdPatch,
 } from '@/src/features/sports/mapSports';
 import type { SportProfile, SportThresholdFormValues } from '@/src/features/sports/types';
 import { usePatchSportThresholds, useSportProfilesQuery } from '@/src/features/sports/useSports';
+import { useAthleteProfileQuery } from '@/src/features/profile/useProfile';
 import { useKeyboardOverlap } from '@/src/hooks/useKeyboardOverlap';
 import { hapticError, hapticSuccess } from '@/src/lib/haptics';
 import { useThemeColors } from '@/src/theme/useThemeColors';
@@ -89,10 +93,28 @@ function SportProfileForm({
   overlap: number;
 }) {
   const saveMutation = usePatchSportThresholds();
+  const { data: athlete } = useAthleteProfileQuery();
   const includePace = showThresholdPace(profile);
-  const [values, setValues] = useState(() => formFromSportProfile(profile));
+  // The unit the stored m/s value is rendered in and typed back against (CW-483).
+  const paceUnit = paceUnitForSport(profile, athlete?.distanceUnits);
+  const [values, setValues] = useState(() => formFromSportProfile(profile, paceUnit));
   const [formError, setFormError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [paceEdited, setPaceEdited] = useState(false);
+  const [renderedPaceUnit, setRenderedPaceUnit] = useState(paceUnit);
+
+  // The athlete profile (and therefore the unit) can resolve after first render.
+  // Re-render the stored m/s value in the new unit so what is shown always matches
+  // the label — and so saving cannot re-parse a per-km string as per-mile.
+  if (paceUnit !== renderedPaceUnit) {
+    setRenderedPaceUnit(paceUnit);
+    if (!paceEdited) {
+      setValues((prev) => ({
+        ...prev,
+        thresholdPace: formFromSportProfile(profile, paceUnit).thresholdPace,
+      }));
+    }
+  }
 
   const patch = <K extends keyof SportThresholdFormValues>(
     key: K,
@@ -100,6 +122,7 @@ function SportProfileForm({
   ) => {
     setFormError(null);
     setSuccessMessage(null);
+    if (key === 'thresholdPace') setPaceEdited(true);
     setValues((prev) => ({ ...prev, [key]: value }));
   };
 
@@ -110,12 +133,12 @@ function SportProfileForm({
   const onSave = async () => {
     setFormError(null);
     setSuccessMessage(null);
-    if (formHasInvalidNumbers(values, includePace)) {
+    if (formHasInvalidNumbers(values, includePace, paceUnit)) {
       hapticError();
       setFormError('Enter valid numbers for each threshold you want to update.');
       return;
     }
-    const body = toSportThresholdPatch(values, includePace);
+    const body = toSportThresholdPatch(values, includePace, paceUnit);
     if (!body) {
       hapticError();
       setFormError('Enter valid numbers for each threshold you want to update.');
@@ -167,13 +190,13 @@ function SportProfileForm({
         />
         {includePace ? (
           <Field
-            label="Threshold pace"
+            label={thresholdPaceFieldLabel(paceUnit)}
             value={values.thresholdPace}
             onChangeText={(text) => patch('thresholdPace', text)}
             keyboardType="decimal-pad"
             editable={!saveMutation.isPending}
-            placeholder="e.g. 5:15"
-            helperText="Format: mm:ss per km, mile, or 100m (e.g. 5:15 or 1:45)"
+            placeholder={paceUnit === 'per-100m' ? 'e.g. 1:45' : 'e.g. 5:15'}
+            helperText={thresholdPaceHelperText(paceUnit)}
           />
         ) : null}
 
