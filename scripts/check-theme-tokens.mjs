@@ -31,7 +31,8 @@ const extensions = new Set(['.js', '.jsx', '.ts', '.tsx']);
 const classPattern = /zinc-\d|text-white\b|bg-surface-dark|text-ink-muted/;
 
 /** 3-, 4-, 6-, or 8-digit hex colour; the lookahead rejects longer runs. */
-const hexPattern = /#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})(?![0-9a-fA-F])/g;
+const hexPattern =
+  /#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})(?![0-9a-fA-F])/g;
 
 /**
  * Deliberate exceptions, each pinned to the exact literals it may use — a file
