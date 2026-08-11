@@ -6,6 +6,7 @@ import {
   optionById,
   severityPresetFromValue,
   severityValueFromPreset,
+  type JourneyEventOption,
 } from './taxonomy';
 import type {
   JourneyEventPayload,
@@ -88,10 +89,24 @@ export function emptyRecoveryEventForm(now = new Date()): RecoveryEventFormValue
   };
 }
 
-export function formFromRecoveryItem(item: RecoveryContextItem): RecoveryEventFormValues {
+/**
+ * Resolves the taxonomy option (title, icon, category) for a server-provided
+ * recovery context item.
+ *
+ * `item.label` is free display text chosen by the server, **not** a
+ * `JourneyEventOptionId` — looking an option up by label makes `optionById`
+ * miss and silently return its first entry (illness / 🌡️) for nearly every
+ * item. Always resolve through the structured `category` + `metadata.eventType`
+ * pair instead. Returns a stable option even when both are absent.
+ */
+export function recoveryItemOption(item: RecoveryContextItem): JourneyEventOption {
   const eventType =
     typeof item.metadata?.eventType === 'string' ? item.metadata.eventType : undefined;
-  const option = findOptionForCategoryType(item.category, eventType);
+  return findOptionForCategoryType(item.category, eventType);
+}
+
+export function formFromRecoveryItem(item: RecoveryContextItem): RecoveryEventFormValues {
+  const option = recoveryItemOption(item);
   return {
     optionId: option.id,
     severityPreset: severityPresetFromValue(item.severity),
