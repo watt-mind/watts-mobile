@@ -102,6 +102,9 @@ export function PlanNutritionSegment() {
     [days, selectedDateKey],
   );
   const weekLabel = formatWeekRangeLabel(range.start, range.end) ?? `${range.start} – ${range.end}`;
+  // Browsed off the current week with Previous/Next — offer a way back, mirroring
+  // PlanTrainingSegment's `browsingAway` + `jumpToCurrentWeek` pattern (CW-285).
+  const browsingAway = weekOffset !== 0;
 
   if (profile.isLoading) {
     return <PlanNutritionSkeleton />;
@@ -134,6 +137,12 @@ export function PlanNutritionSegment() {
     } finally {
       setBusy(null);
     }
+  };
+
+  const jumpToCurrentWeek = () => {
+    if (!browsingAway) return;
+    hapticLight();
+    setWeekOffset(0);
   };
 
   const openGrocery = () => {
@@ -180,7 +189,22 @@ export function PlanNutritionSegment() {
             >
               <Text className="text-sm font-semibold text-brand">Previous</Text>
             </AnimatedPressable>
-            <Text className="text-sm font-semibold text-text-primary">{weekLabel}</Text>
+            <View className="items-center px-2">
+              <Text className="text-sm font-semibold text-text-primary">{weekLabel}</Text>
+              {browsingAway ? (
+                <AnimatedPressable
+                  hitSlop={8}
+                  disabled={Boolean(busy)}
+                  onPress={jumpToCurrentWeek}
+                  accessibilityRole="button"
+                  accessibilityLabel="Jump to this week"
+                  className="mt-1"
+                  testID="plan-nutrition-this-week"
+                >
+                  <Text className="text-xs font-semibold text-brand">This week</Text>
+                </AnimatedPressable>
+              ) : null}
+            </View>
             <AnimatedPressable
               hitSlop={8}
               disabled={Boolean(busy)}

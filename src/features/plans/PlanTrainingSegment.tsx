@@ -29,7 +29,12 @@ import { useThemeColors } from '@/src/theme/useThemeColors';
 import { localDateKey } from '@/src/features/today/weekGlance';
 
 import { formatDayChipLabel, formatWeekRangeLabel, humanizePlanStrategy } from './formatPlanCopy';
-import { filterPlannedToWeek, seasonTodayPercent, weekDateKeys } from './mapActivePlan';
+import {
+  filterPlannedToWeek,
+  findCurrentWeekIndex,
+  seasonTodayPercent,
+  weekDateKeys,
+} from './mapActivePlan';
 import { mapNutritionPlanDays, weekHasSelectedMeals } from './mapNutritionPlan';
 import { PlanAdjustSheet } from './PlanAdjustSheet';
 import { PlanSessionEditorSheet } from './PlanSessionEditorSheet';
@@ -89,20 +94,6 @@ function weekContainsTodaySafe(weekMeta: PlanWeekShell | null | undefined): bool
   return today >= weekMeta.startDateKey && today <= (weekMeta.endDateKey ?? weekMeta.startDateKey);
 }
 
-/**
- * Index of the week to treat as "current": prefer the plan's own `currentWeek`
- * (id match), but fall back to whichever week's date range actually contains
- * today. A plan that ended weeks ago has no `currentWeek`, and without this
- * fallback the view (and the "This week" jump affordance) silently defaults
- * to the plan's last historical week instead of reflecting today's date.
- */
-function findCurrentWeekIndex(shell: ActivePlanShell | null | undefined): number {
-  if (!shell) return -1;
-  const byId = shell.weeks.findIndex((w) => w.id === shell.currentWeek?.id);
-  if (byId >= 0) return byId;
-  return shell.weeks.findIndex((w) => weekContainsTodaySafe(w));
-}
-
 export function PlanTrainingSegment({
   shell,
   loading,
@@ -113,6 +104,9 @@ export function PlanTrainingSegment({
 }: Props) {
   const theme = useThemeColors();
   const weeks = shell?.weeks ?? [];
+  // Declared before the render-time shell reset below, which needs it to resolve
+  // the current-week index (CW-285 fallback).
+  const todayKey = localDateKey(new Date()) ?? '';
   const [weekIndex, setWeekIndex] = useState(0);
   const [shellCursor, setShellCursor] = useState<{
     id: string | undefined;
@@ -136,7 +130,7 @@ export function PlanTrainingSegment({
       weekCount: shell?.weeks.length ?? 0,
     });
     if (shell) {
-      const idx = findCurrentWeekIndex(shell);
+      const idx = findCurrentWeekIndex(shell, todayKey);
       setWeekIndex(idx >= 0 ? idx : Math.max(0, shell.weeks.length - 1));
     }
   }
@@ -173,7 +167,6 @@ export function PlanTrainingSegment({
     weekActivityRange?.end ?? new Date(0),
     { enabled: Boolean(weekActivityRange) },
   );
-  const todayKey = localDateKey(new Date()) ?? '';
   const weekContainsToday = weekContainsTodaySafe(weekMeta);
   const nutritionQuery = useNutritionPlanQuery(nutritionRange.start, nutritionRange.end, {
     enabled: trackingOn && Boolean(nutritionRange.start) && weekContainsToday,
@@ -236,7 +229,7 @@ export function PlanTrainingSegment({
     !nutritionQuery.isError &&
     !weekHasSelectedMeals(nutritionDays);
 
-  const currentWeekIndex = useMemo(() => findCurrentWeekIndex(shell), [shell]);
+  const currentWeekIndex = useMemo(() => findCurrentWeekIndex(shell, todayKey), [shell, todayKey]);
   const weekIsPast = Boolean(
     weekMeta?.endDateKey && weekMeta.endDateKey < todayKey && !weekContainsToday,
   );
