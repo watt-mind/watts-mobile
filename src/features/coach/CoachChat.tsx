@@ -28,6 +28,7 @@ import { AnimatedView } from '@/src/components/AnimatedView';
 import { AppSymbol } from '@/src/components/AppSymbol';
 import { hapticLight, hapticSuccess } from '@/src/lib/haptics';
 import { CoachChatSkeleton } from '@/src/components/Skeleton';
+import { Spinner } from '@/src/components/Spinner';
 import { useKeyboardOverlap } from '@/src/hooks/useKeyboardOverlap';
 import { Colors, type ThemeColors } from '@/src/theme/colors';
 import { useThemeColors } from '@/src/theme/useThemeColors';
@@ -125,6 +126,10 @@ function ToolProgressChip({ item }: { item: ToolInProgressSummary }) {
     <View
       className={`mt-2 flex-row items-center gap-2 rounded-xl border bg-card/80 px-3 py-2 ${domainAccentBorder(item.domain)}`}
     >
+      {/* Not `<Spinner />`: the tint is data-driven, not semantic — it carries the
+          running tool's domain (one of five hues from `domainGlyph`) and must match
+          the glyph beside it. A closed brand/muted/danger union cannot express that,
+          and should not try to. Allowlisted in `spinnerUsage.test.ts`. */}
       <ActivityIndicator size="small" color={glyph.tint} />
       <ChatGlyph sf={glyph.sf} emoji={glyph.emoji} size={14} tint={glyph.tint} />
       <Text className="flex-1 text-sm text-text-muted">{item.label}</Text>
@@ -701,7 +706,7 @@ export function CoachChat({
               />
               {attachment.uploading ? (
                 <View className="absolute inset-0 items-center justify-center rounded-xl bg-black/50">
-                  <ActivityIndicator color={theme.brandOnSurface} />
+                  <Spinner />
                 </View>
               ) : null}
               <Pressable
@@ -764,9 +769,13 @@ export function CoachChat({
           onPress={() => void dictation.toggleRecording()}
         >
           {dictation.isTranscribing ? (
+            // Not `<Spinner />`: this button changes its own fill, so the spinner
+            // is on a fill in one state and a surface in the other — the
+            // `Button.tsx` situation, which no surface-foreground tone can express.
             // Empty composer = brand fill, so ink. Otherwise the spinner sits on
             // `bg-card` and needs the per-theme brand foreground: the raw fill is
             // 1.74:1 on light #fafafa, brandOnSurface is 4.51:1.
+            // Allowlisted in `spinnerUsage.test.ts`.
             <ActivityIndicator color={composerEmpty ? theme.ink : theme.brandOnSurface} />
           ) : (
             <ChatGlyph
@@ -801,7 +810,11 @@ export function CoachChat({
           }}
         >
           {chat.sending ? (
-            <ActivityIndicator color={theme.ink} />
+            // `canSend` requires `!composerBusy`, and `chat.sending` sets that —
+            // so while this spinner is up the button is `bg-border-strong`, never
+            // `bg-brand`. It is on a surface, not a fill: ink was 1.95:1 on dark
+            // `borderStrong` #3f3f46; `brandOnSurface` is 6.2:1 dark / 3.2:1 light.
+            <Spinner />
           ) : (
             <ChatGlyph
               sf="arrow.up"

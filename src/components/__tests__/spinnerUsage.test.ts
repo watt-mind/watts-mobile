@@ -34,15 +34,10 @@ const ALLOWLIST = new Map<string, string>([
   ],
   [
     'src/features/coach/CoachChat.tsx',
-    'TODO(CW-536): out of scope for CW-356 (owned by CW-348, which re-tinted these off `theme` ' +
-      'but did not route them through `Spinner`). No contrast bug remains — two of the four use ' +
-      '`theme.ink` on a filled send button, which `Spinner` cannot express today.',
-  ],
-  [
-    'app/(app)/recovery-event.tsx',
-    'TODO(CW-536): out of scope for CW-356 (owned by CW-348, which re-tinted these off `theme` ' +
-      'but did not route them through `Spinner`). No contrast bug remains — one uses ' +
-      '`theme.dangerOnSurface`, which `Spinner` cannot express today.',
+    'Deliberate exception, two spinners, neither a surface foreground: the dictation button ' +
+      'changes its own fill, so its spinner needs ink on the brand fill and `brandOnSurface` on ' +
+      '`bg-card` (the `Button.tsx` case); and the tool-progress chip tints per tool domain, a ' +
+      'data-driven hue that must match the glyph beside it.',
   ],
 ]);
 

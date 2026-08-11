@@ -3,7 +3,6 @@ import { Stack, router, useLocalSearchParams } from 'expo-router';
 import type { SFSymbol } from 'expo-symbols';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   LayoutAnimation,
   Platform,
@@ -18,6 +17,7 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 
 import { friendlyError } from '@/src/api/errors';
 import { Button } from '@/src/components/Button';
+import { Spinner } from '@/src/components/Spinner';
 import { AppSymbol } from '@/src/components/AppSymbol';
 import {
   applyTimePreset,
@@ -102,7 +102,10 @@ function OptionGlyph({
   const icon = size === 'sm' ? 15 : 17;
   return (
     <View className="mr-3 h-5 w-5 items-center justify-center">
-      <AppSymbol sf={sf} size={icon} tintColor={tint} fallback="" />
+      {/* A mapped glyph always wins; the dot only shows if one ever goes
+          unmapped, so the option still reads as a row rather than a blank box.
+          `appSymbolCoverage.test.ts` guards `taxonomy.ts`, which feeds `sf`. */}
+      <AppSymbol sf={sf} size={icon} tintColor={tint} fallback="•" />
     </View>
   );
 }
@@ -251,7 +254,7 @@ export default function RecoveryEventScreen() {
   if (isEdit && isLoading && !hydrated) {
     return (
       <View className="flex-1 items-center justify-center bg-surface">
-        <ActivityIndicator color={theme.brandOnSurface} />
+        <Spinner />
       </View>
     );
   }
@@ -473,7 +476,7 @@ export default function RecoveryEventScreen() {
                   disabled={pending}
                 >
                   {deleteMutation.isPending ? (
-                    <ActivityIndicator color={theme.dangerOnSurface} />
+                    <Spinner tone="danger" />
                   ) : (
                     <Text className="text-base font-semibold text-danger">Delete</Text>
                   )}
