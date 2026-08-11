@@ -12,6 +12,7 @@ import { isDailyCheckinCompleted } from '@/src/features/log/isDailyCheckinComple
 import { resolveLogScreenIntent } from '@/src/features/log/logScreenIntent';
 import { formFromWellness, formHasContent } from '@/src/features/log/mapLogForm';
 import { useDailyCheckinQuery } from '@/src/features/log/useDailyCheckin';
+import { useLogTabPreference } from '@/src/features/log/useLogTabPreference';
 import { useTodayWellnessQuery } from '@/src/features/log/useLog';
 import { MeasurementSheet } from '@/src/features/measurements/MeasurementSheet';
 import { MeasurementsDetailSheet } from '@/src/features/measurements/MeasurementsDetailSheet';
@@ -65,6 +66,10 @@ export default function LogScreen() {
   const [measurementSheetOpen, setMeasurementSheetOpen] = useState(false);
   const launchedPhotoTokenRef = useRef<string | null>(null);
   const untokenedCameraBusyRef = useRef(false);
+  // The default-log-view preference opens its sheet once per screen instance,
+  // and only when the athlete did not arrive through a deep link.
+  const defaultViewAppliedRef = useRef(false);
+  const { preference: logTabPreference, ready: logTabPreferenceReady } = useLogTabPreference();
 
   // Detail Sheet States
   const [nutritionDetailSheetOpen, setNutritionDetailSheetOpen] = useState(false);
@@ -82,7 +87,14 @@ export default function LogScreen() {
         onPhotoMealRoute: pathname.includes('photo-meal'),
         handledPhotoToken: launchedPhotoTokenRef.current,
         untokenedCameraBusy: untokenedCameraBusyRef.current,
+        preference: logTabPreference,
+        preferenceReady: logTabPreferenceReady,
+        defaultViewApplied: defaultViewAppliedRef.current,
       });
+
+      if (intent.markDefaultViewApplied) {
+        defaultViewAppliedRef.current = true;
+      }
 
       if (intent.handledPhotoToken != null) {
         launchedPhotoTokenRef.current = intent.handledPhotoToken;
@@ -128,7 +140,15 @@ export default function LogScreen() {
       }
     }, 0);
     return () => clearTimeout(timeout);
-  }, [params.action, params.section, params.t, nutritionEnabled, pathname]);
+  }, [
+    params.action,
+    params.section,
+    params.t,
+    nutritionEnabled,
+    pathname,
+    logTabPreference,
+    logTabPreferenceReady,
+  ]);
 
   const wellnessInitialValues = useMemo(
     () =>

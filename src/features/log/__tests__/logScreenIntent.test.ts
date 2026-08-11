@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { type LogScreenIntentInput, resolveLogScreenIntent } from '../logScreenIntent';
+import {
+  type LogScreenIntentInput,
+  resolveDefaultLogSheet,
+  resolveLogScreenIntent,
+} from '../logScreenIntent';
 
 function intent(overrides: Partial<LogScreenIntentInput> = {}) {
   return resolveLogScreenIntent({
@@ -13,7 +17,7 @@ function intent(overrides: Partial<LogScreenIntentInput> = {}) {
 }
 
 describe('resolveLogScreenIntent', () => {
-  it('does nothing when there are no params', () => {
+  it('does nothing when there are no params and no default-view preference', () => {
     const result = intent();
     expect(result.open).toBeNull();
     expect(result.clearParams).toEqual([]);
@@ -118,5 +122,85 @@ describe('resolveLogScreenIntent', () => {
       expect(result.open).toBeNull();
       expect(result.releaseUntokenedCamera).toBe(true);
     });
+
+    it('marks the default view as settled so a camera launch is not followed by it', () => {
+      const result = intent({ action: 'camera', token: 'abc', preference: 'wellness' });
+      expect(result.open).toBe('photoMealRoute');
+      expect(result.markDefaultViewApplied).toBe(true);
+    });
+  });
+
+  describe('default log view preference', () => {
+    it.each([
+      ['nutrition', 'nutritionDetail'],
+      ['wellness', 'wellness'],
+      ['measurements', 'measurementsDetail'],
+    ] as const)('opens %s when that is the saved default', (preference, expected) => {
+      const result = intent({ preference, preferenceReady: true });
+      expect(result.open).toBe(expected);
+      expect(result.markDefaultViewApplied).toBe(true);
+      expect(result.clearParams).toEqual([]);
+    });
+
+    it('opens nothing for "auto"', () => {
+      expect(intent({ preference: 'auto', preferenceReady: true }).open).toBeNull();
+    });
+
+    it('opens nothing for the legacy "recovery" value, which has no sheet', () => {
+      expect(intent({ preference: 'recovery', preferenceReady: true }).open).toBeNull();
+    });
+
+    it('skips the nutrition default when nutrition tracking is off', () => {
+      expect(
+        intent({ preference: 'nutrition', preferenceReady: true, nutritionEnabled: false }).open,
+      ).toBeNull();
+    });
+
+    it('waits for the preference to hydrate before deciding', () => {
+      const hydrating = intent({ preference: 'auto', preferenceReady: false });
+      expect(hydrating.open).toBeNull();
+      expect(hydrating.markDefaultViewApplied).toBe(false);
+
+      const hydrated = intent({ preference: 'wellness', preferenceReady: true });
+      expect(hydrated.open).toBe('wellness');
+    });
+
+    it('applies at most once per screen instance', () => {
+      const again = intent({
+        preference: 'wellness',
+        preferenceReady: true,
+        defaultViewApplied: true,
+      });
+      expect(again.open).toBeNull();
+    });
+
+    it('lets a deep link win, and does not open the default on the param-clear re-run', () => {
+      const deepLink = intent({
+        section: 'measurements',
+        preference: 'wellness',
+        preferenceReady: true,
+      });
+      expect(deepLink.open).toBe('measurementsDetail');
+      expect(deepLink.markDefaultViewApplied).toBe(true);
+
+      // The screen clears the params, which re-runs the effect with none left.
+      const afterClear = intent({
+        preference: 'wellness',
+        preferenceReady: true,
+        defaultViewApplied: true,
+      });
+      expect(afterClear.open).toBeNull();
+    });
+  });
+});
+
+describe('resolveDefaultLogSheet', () => {
+  it('maps each preference to the surface the Log screen actually has', () => {
+    expect(resolveDefaultLogSheet('auto', true)).toBeNull();
+    expect(resolveDefaultLogSheet('recovery', true)).toBeNull();
+    expect(resolveDefaultLogSheet('wellness', true)).toBe('wellness');
+    expect(resolveDefaultLogSheet('measurements', true)).toBe('measurementsDetail');
+    expect(resolveDefaultLogSheet('nutrition', true)).toBe('nutritionDetail');
+    expect(resolveDefaultLogSheet('nutrition', false)).toBeNull();
   });
 });

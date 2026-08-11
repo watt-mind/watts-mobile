@@ -7,6 +7,8 @@
  * the rules testable — none of these paths are reachable from a render test.
  */
 
+import type { LogTabPreference } from './logTabPreference';
+
 /** Surfaces the Log screen can open in response to a route param. */
 export type LogScreenTarget =
   | 'meal'
@@ -31,6 +33,12 @@ export type LogScreenIntentInput = {
   handledPhotoToken: string | null;
   /** True while an untokened camera launch is still being processed. */
   untokenedCameraBusy: boolean;
+  /** Device preference for the default Log view. */
+  preference?: LogTabPreference;
+  /** False while the preference is still hydrating from storage. */
+  preferenceReady?: boolean;
+  /** True once this screen instance has already settled its opening view. */
+  defaultViewApplied?: boolean;
 };
 
 export type LogScreenIntent = {
@@ -44,6 +52,12 @@ export type LogScreenIntent = {
   claimUntokenedCamera: boolean;
   /** True when the untokened-camera guard should be released. */
   releaseUntokenedCamera: boolean;
+  /**
+   * True once the screen has settled its opening view, so the default-view
+   * preference is never applied again for this screen instance (including on
+   * the re-run triggered by clearing the consumed params).
+   */
+  markDefaultViewApplied: boolean;
 };
 
 const NO_INTENT: LogScreenIntent = {
@@ -52,7 +66,24 @@ const NO_INTENT: LogScreenIntent = {
   handledPhotoToken: null,
   claimUntokenedCamera: false,
   releaseUntokenedCamera: false,
+  markDefaultViewApplied: true,
 };
+
+/**
+ * Which sheet the "Default log view" preference opens when the athlete enters
+ * Log without a deep link. `auto` (and the legacy `recovery` value, which has
+ * no surface on the single-page Log) opens nothing and simply lands on the
+ * page — the default behaviour.
+ */
+export function resolveDefaultLogSheet(
+  preference: LogTabPreference,
+  nutritionEnabled: boolean,
+): LogScreenTarget | null {
+  if (preference === 'wellness') return 'wellness';
+  if (preference === 'measurements') return 'measurementsDetail';
+  if (preference === 'nutrition') return nutritionEnabled ? 'nutritionDetail' : null;
+  return null;
+}
 
 function sectionTarget(section: string, nutritionEnabled: boolean): LogScreenTarget | null {
   if (section === 'wellness') return 'wellness';
@@ -92,10 +123,15 @@ export function resolveLogScreenIntent(input: LogScreenIntentInput): LogScreenIn
     // Match Today: do not open AI photo logging when nutrition tracking is off.
     // Also avoid stacking multiple fullscreen photo-meal routes.
     if (!input.nutritionEnabled || input.onPhotoMealRoute) {
-      return { ...claimed, open: null, releaseUntokenedCamera: true };
+      return { ...claimed, open: null, releaseUntokenedCamera: true, markDefaultViewApplied: true };
     }
 
-    return { ...claimed, open: 'photoMealRoute', releaseUntokenedCamera: true };
+    return {
+      ...claimed,
+      open: 'photoMealRoute',
+      releaseUntokenedCamera: true,
+      markDefaultViewApplied: true,
+    };
   }
 
   // `?action=` wins over `?section=` when both are present.
@@ -105,13 +141,31 @@ export function resolveLogScreenIntent(input: LogScreenIntentInput): LogScreenIn
 
   const hasConsumableParam = action != null || section != null;
 
+  if (!hasConsumableParam) {
+    // No deep link: fall back to the athlete's default-log-view preference,
+    // once per screen instance and only after the preference has hydrated.
+    if (input.defaultViewApplied) return { ...NO_INTENT, releaseUntokenedCamera: true };
+    if (input.preferenceReady === false) {
+      // Still hydrating — do nothing yet and re-decide once it lands.
+      return { ...NO_INTENT, releaseUntokenedCamera: true, markDefaultViewApplied: false };
+    }
+    return {
+      ...NO_INTENT,
+      open: resolveDefaultLogSheet(input.preference ?? 'auto', input.nutritionEnabled),
+      releaseUntokenedCamera: true,
+    };
+  }
+
   return {
     open: resolved,
     // Clear whatever we consumed — including params we recognised but chose
     // not to act on, so they cannot re-open a sheet on the next tab switch.
-    clearParams: hasConsumableParam ? ['action', 'section', 't'] : [],
+    clearParams: ['action', 'section', 't'],
     handledPhotoToken: null,
     claimUntokenedCamera: false,
     releaseUntokenedCamera: true,
+    // A deep link always wins over the default-view preference, and the
+    // re-run caused by clearing these params must not open the default.
+    markDefaultViewApplied: true,
   };
 }
