@@ -278,6 +278,23 @@ When `EXPO_PUBLIC_E2E_AUTH=1`, bootstrap skips system-browser PKCE and seeds Sec
 
 **Never** set these on **preview**, **production**, or store EAS profiles (or on GitHub Release APKs from `pnpm release:android:github`). Tokens in `EXPO_PUBLIC_*` are embedded in the JS bundle for that build. Use only the dedicated `e2e` EAS profile / local `.env` when you need the env-seed fallback.
 
+#### Enforced in code, not just by convention (CW-354)
+
+This is no longer a documentation-only rule — two guards back it, both keyed off `EXPO_PUBLIC_SENTRY_ENVIRONMENT`, which `eas.json` sets per profile:
+
+* **Runtime resolver** — `resolveE2eAuthEnabled()` in `src/config/e2eGuard.ts` computes `E2E_AUTH_ENABLED` in `src/config/env.ts`. The flag only takes effect when the build is a dev build (`__DEV__`) **or** `EXPO_PUBLIC_SENTRY_ENVIRONMENT === 'e2e'`. On any other environment it logs a `console.error` and resolves to `false` — deliberately *not* a throw, since that runs at module load and would turn a config mistake into a crash on launch. `E2E_ACCESS_TOKEN` / `E2E_REFRESH_TOKEN` resolve to `''` whenever the resolver says disabled, so fixture tokens never reach `src/auth/e2eAuth.ts`.
+* **Build-time assertion** — `app.config.ts` throws during config resolution when `EXPO_PUBLIC_E2E_AUTH` is truthy while `EXPO_PUBLIC_SENTRY_ENVIRONMENT` resolves to `production`. A mis-set production build fails at `expo prebuild` / `eas build` instead of shipping.
+
+| `EXPO_PUBLIC_E2E_AUTH` | `__DEV__` | `EXPO_PUBLIC_SENTRY_ENVIRONMENT` | E2E auth + tokens | Build |
+|---|---|---|---|---|
+| off | any | any | disabled | ok |
+| on | true | `development` (local Metro / dev client) | **enabled** | ok |
+| on | false | `e2e` (EAS `e2e` profile) | **enabled** | ok |
+| on | false | `preview` | disabled + `console.error` | ok |
+| on | false | `production` | disabled + `console.error` | **throws** |
+
+Both documented local paths are unaffected: `pnpm test:e2e` runs against a dev-client build where `__DEV__` is true, and the EAS `e2e` profile sets `EXPO_PUBLIC_SENTRY_ENVIRONMENT=e2e`.
+
 ### Simulator → instance URL
 
 | Target | E2E stack (preferred) | Ad-hoc local API |

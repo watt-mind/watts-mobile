@@ -43,6 +43,12 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     plugins.push('./plugins/withIosFreeTeamStrip');
   }
 
+  const sentryEnvironment =
+    process.env.EXPO_PUBLIC_SENTRY_ENVIRONMENT ??
+    (process.env.EAS_BUILD === 'true' ? 'production' : 'development');
+
+  assertE2eAuthNotProduction(sentryEnvironment);
+
   const googleMapsApiKey =
     process.env.GOOGLE_MAPS_API_KEY?.trim() ||
     process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY?.trim() ||
@@ -75,9 +81,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       ...extra,
       iosFreeTeam,
       sentryDsn: process.env.EXPO_PUBLIC_SENTRY_DSN ?? extra.sentryDsn ?? '',
-      sentryEnvironment:
-        process.env.EXPO_PUBLIC_SENTRY_ENVIRONMENT ??
-        (process.env.EAS_BUILD === 'true' ? 'production' : 'development'),
+      sentryEnvironment,
       sentryRelease:
         process.env.EXPO_PUBLIC_SENTRY_RELEASE ?? process.env.EAS_BUILD_ID ?? undefined,
       sentryDist: process.env.EXPO_PUBLIC_SENTRY_DIST ?? process.env.EAS_BUILD_NUMBER ?? undefined,
@@ -95,6 +99,30 @@ function readPackageVersion(): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+/**
+ * Build-time backstop for the E2E auth bypass (CW-354).
+ *
+ * `EXPO_PUBLIC_E2E_AUTH` on a production profile would ship a live auth bypass and
+ * bundle-embedded fixture tokens to real users. The runtime resolver
+ * (`src/config/e2eGuard.ts`) already refuses to honour that combination, but it does
+ * so silently-ish, after the binary is built. Throwing here fails config resolution —
+ * so `expo prebuild` / `eas build` stops before a misconfigured store build exists.
+ *
+ * Only `production` throws: `preview` is caught by the runtime resolver, and failing
+ * the build on it would be a behaviour change beyond the store-safety goal.
+ */
+function assertE2eAuthNotProduction(sentryEnvironment: string): void {
+  if (!isTruthyEnv(process.env.EXPO_PUBLIC_E2E_AUTH)) return;
+  if (sentryEnvironment.trim().toLowerCase() !== 'production') return;
+
+  throw new Error(
+    'Refusing to resolve app config: EXPO_PUBLIC_E2E_AUTH is set while ' +
+      'EXPO_PUBLIC_SENTRY_ENVIRONMENT resolves to "production". That combination would ship ' +
+      'the E2E auth bypass and its fixture tokens in a store build. Unset EXPO_PUBLIC_E2E_* ' +
+      'for production builds, or use the dedicated "e2e" EAS profile.',
+  );
 }
 
 function isTruthyEnv(value: string | undefined): boolean {
