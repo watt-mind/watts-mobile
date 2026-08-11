@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Pressable, Text, TextInput, View } from 'react-native';
 
 import { AppSymbol } from '@/src/components/AppSymbol';
+import { stepSleepHours } from '@/src/features/log/mapLogForm';
 import { hapticLight } from '@/src/lib/haptics';
 import { useThemeColors } from '@/src/theme/useThemeColors';
 
@@ -30,10 +31,7 @@ export function SleepDurationInput({
 
   const handleStep = (delta: number) => {
     hapticLight();
-    const parsed = Number(value.trim());
-    const base = Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
-    const next = Math.max(0, Math.round((base + delta) * 10) / 10);
-    onChangeText(String(next));
+    onChangeText(stepSleepHours(value, delta));
     onStep?.(delta);
   };
 
