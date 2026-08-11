@@ -48,6 +48,16 @@ async function clearHealthSyncForIdentityTransition(): Promise<void> {
   }
 }
 
+async function clearPushRegistrationForIdentityTransition(): Promise<void> {
+  try {
+    const { clearPushRegistrationOnSignOut } =
+      await import('@/src/features/notifications/pushRegistration');
+    await clearPushRegistrationOnSignOut();
+  } catch (error) {
+    console.warn('Failed to clear push registration during account transition', error);
+  }
+}
+
 async function clearPendingWellnessCheckinForIdentityTransition(): Promise<void> {
   try {
     const { clearPendingWellnessCheckin } = await import('@/src/features/log/offlineWellnessQueue');
@@ -218,6 +228,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setStatus((current) => (current === 'needs_instance' ? current : 'needs_login'));
       queryClient.clear();
       void clearPersistedQueryCache();
+      // A server-revoked refresh token signs the athlete out just as definitively
+      // as tapping Sign out: the device must stop receiving that account's push
+      // notifications, and the local token must be cleared so the pending
+      // unregister retry can recover.
+      void clearPushRegistrationForIdentityTransition();
       void clearHealthSyncForIdentityTransition();
       void clearPendingWellnessCheckinForIdentityTransition();
       void import('@/src/features/activation/connectLater')
@@ -285,13 +300,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = useCallback(async () => {
     const generation = bumpAuthSessionGeneration();
-    try {
-      const { clearPushRegistrationOnSignOut } =
-        await import('@/src/features/notifications/pushRegistration');
-      await clearPushRegistrationOnSignOut();
-    } catch (error) {
-      console.warn('Failed to clear push registration on sign-out', error);
-    }
+    await clearPushRegistrationForIdentityTransition();
     await clearHealthSyncForIdentityTransition();
     await clearPendingWellnessCheckinForIdentityTransition();
     try {
