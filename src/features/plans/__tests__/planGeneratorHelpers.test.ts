@@ -6,9 +6,11 @@ import {
   clampDurationWeeks,
   clampVolumeHours,
   defaultSelectedGoalId,
+  formatGenerateProgress,
   isPlanSpanValid,
   mapPhaseGlance,
   nextMondayYmd,
+  PLAN_GENERATE_TIMEOUT_MS,
   planDateIsoNoon,
   planEndDateIso,
   recommendStrategy,
@@ -165,5 +167,20 @@ describe('mapPhaseGlance', () => {
         type: 'BUILD',
       },
     ]);
+  });
+});
+
+describe('formatGenerateProgress', () => {
+  it('counts elapsed time so the working phase cannot look frozen', () => {
+    expect(formatGenerateProgress(0).elapsedLabel).toBe('0:00');
+    expect(formatGenerateProgress(9_400).elapsedLabel).toBe('0:09');
+    expect(formatGenerateProgress(65_000).elapsedLabel).toBe('1:05');
+    expect(formatGenerateProgress(-5).elapsedLabel).toBe('0:00');
+  });
+
+  it('escalates the hint as generation drags on', () => {
+    expect(formatGenerateProgress(5_000).hint).toMatch(/under a minute/i);
+    expect(formatGenerateProgress(45_000).hint).toMatch(/still working/i);
+    expect(formatGenerateProgress(PLAN_GENERATE_TIMEOUT_MS).hint).toMatch(/cancel/i);
   });
 });

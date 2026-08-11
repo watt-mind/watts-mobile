@@ -24,6 +24,7 @@ import {
   clampVolumeHours,
   defaultSelectedGoalId,
   DURATION_WEEK_CHIPS,
+  formatGenerateProgress,
   isPlanSpanValid,
   mapPhaseGlance,
   nextMondayYmd,
@@ -195,6 +196,8 @@ export function PlanGeneratorPanel({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastAction, setLastAction] = useState<LastAction | null>(null);
+  const [generateStartedAt, setGenerateStartedAt] = useState<number | null>(null);
+  const [generateElapsedMs, setGenerateElapsedMs] = useState(0);
   const generateAbortRef = useRef<AbortController | null>(null);
 
   // Abort the first-week-preview poller (up to ~180s) when this panel unmounts — the athlete
@@ -204,6 +207,16 @@ export function PlanGeneratorPanel({
       generateAbortRef.current?.abort();
     };
   }, []);
+
+  // Tick while generating so the working phase visibly progresses instead of
+  // looking frozen for up to three minutes.
+  useEffect(() => {
+    if (phase !== 'working' || generateStartedAt == null) return;
+    const timer = setInterval(() => {
+      setGenerateElapsedMs(Date.now() - generateStartedAt);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [phase, generateStartedAt]);
 
   useFocusEffect(
     useCallback(() => {
@@ -273,6 +286,8 @@ export function PlanGeneratorPanel({
     setError(null);
     setBusy(true);
     setPhase('working');
+    setGenerateStartedAt(Date.now());
+    setGenerateElapsedMs(0);
     onGenerateStart?.();
     // Supersede any still-running generate (e.g. a fast Retry tap) before starting a new one.
     generateAbortRef.current?.abort();
@@ -301,11 +316,16 @@ export function PlanGeneratorPanel({
       const week = await generateFirstWeekPreview(result, { signal: controller.signal });
       setPreview(week);
       setPhase('preview');
+      setGenerateStartedAt(null);
       hapticSuccess();
     } catch (err) {
-      if (controller.signal.aborted) return;
+      // An abort means someone else (cancel, or a superseding generate) now owns
+      // the UI state. If no such owner exists, fall through and reset — the
+      // 'working' phase has no exit of its own and must never be stranded.
+      if (controller.signal.aborted && generateAbortRef.current !== controller) return;
       setPhase('form');
       setFormStep('approach');
+      setGenerateStartedAt(null);
       setError(friendlyError(err, 'Could not generate plan'));
       hapticError();
     } finally {
@@ -314,6 +334,19 @@ export function PlanGeneratorPanel({
         setBusy(false);
       }
     }
+  };
+
+  /** The only way out of the working phase for the athlete — see the panel below. */
+  const onCancelGenerate = () => {
+    hapticLight();
+    const controller = generateAbortRef.current;
+    generateAbortRef.current = null;
+    controller?.abort();
+    setBusy(false);
+    setGenerateStartedAt(null);
+    setError(null);
+    setPhase('form');
+    setFormStep('approach');
   };
 
   const onActivate = async () => {
@@ -364,14 +397,37 @@ export function PlanGeneratorPanel({
         </View>
       ) : null}
 
-      {phase === 'working' ? (
-        <View className="gap-3 py-2">
-          <Text className="text-sm text-text-muted">Generating your first week…</Text>
-          <Skeleton className="h-16 rounded-xl" />
-          <Skeleton className="h-16 rounded-xl" />
-          <Skeleton className="h-16 rounded-xl" />
-        </View>
-      ) : null}
+      {phase === 'working'
+        ? (() => {
+            const progress = formatGenerateProgress(generateElapsedMs);
+            return (
+              <View className="gap-3 py-2" testID="plan-generator-working">
+                <View className="flex-row items-center justify-between gap-2">
+                  <Text className="shrink text-sm text-text-primary">
+                    Generating your first week…
+                  </Text>
+                  <Text
+                    className="text-sm text-text-muted"
+                    accessibilityLabel={`Elapsed ${progress.elapsedLabel}`}
+                  >
+                    {progress.elapsedLabel}
+                  </Text>
+                </View>
+                <Text className="text-sm text-text-muted">{progress.hint}</Text>
+                <Skeleton className="h-16 rounded-xl" />
+                <Skeleton className="h-16 rounded-xl" />
+                <Skeleton className="h-16 rounded-xl" />
+                <Button
+                  label="Cancel and go back"
+                  variant="secondary"
+                  onPress={onCancelGenerate}
+                  haptic={false}
+                  testID="plan-generator-cancel"
+                />
+              </View>
+            );
+          })()
+        : null}
 
       {phase === 'form' && formStep === 'goal' ? (
         <>
