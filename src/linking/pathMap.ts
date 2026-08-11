@@ -1,24 +1,12 @@
 /**
- * Canonical deep-link path map (scheme + push `data.path` + https `/go/*`).
+ * Deep-link constants shared by the scheme, push `data.path`, and https `/go/*` entry points:
+ * `APP_SCHEME`, `UNIVERSAL_LINK_PREFIX`, `OAUTH_CALLBACK_PATH`, `PUSH_TYPE_DEFAULT_PATHS`.
+ *
+ * This file owns no path resolution. Path → Expo Router href lives in
+ * `src/linking/resolveDeepLink.ts` (code source of truth); `docs/deep-links.md`
+ * holds the canonical path table.
  *
  * Freeze aliases once the first store build ships.
- *
- * | External path              | Expo Router href                         |
- * |----------------------------|------------------------------------------|
- * | `/today`                   | `/(app)/(tabs)/today`                    |
- * | `/today/recommendation`    | `/(app)/(tabs)/today`                    |
- * | `/recommendations/:id`     | `/(app)/(tabs)/today`                    |
- * | `/planned/:id`             | `/(app)/planned/:id`                     |
- * | `/activities`              | `/(app)/activity`                        |
- * | `/activities/:id`          | `/(app)/activity/:id`                    |
- * | `/upcoming`                | `/(app)/upcoming`                        |
- * | `/events`                  | `/(app)/events`                          |
- * | `/events/:id`              | `/(app)/events/:id`                      |
- * | `/coach`                   | `/(app)/(tabs)/coach`                    |
- * | `/chat` / `/chat/:roomId`  | `/(app)/(tabs)/coach`                    |
- * | `/notifications`           | `/(app)/(tabs)/more/notifications`       |
- * | `/more`                    | `/(app)/(tabs)/more`                     |
- * | `/oauth/callback`          | (AuthSession — not product)              |
  */
 
 export const APP_SCHEME = 'coachwatts';
