@@ -127,5 +127,3 @@ export const MEAL_OPTIONS: { value: MealSlot; label: string }[] = [
   { value: 'SNACK', label: 'Snack' },
   { value: 'OTHER', label: 'Other' },
 ];
-
-export const HYDRATION_QUICK_ML = [250, 500, 750] as const;

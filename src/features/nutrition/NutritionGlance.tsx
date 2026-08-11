@@ -1,6 +1,6 @@
 /* Hallmark · genre: modern-minimal · design-system: docs/DESIGN.md · designed-as-app */
 import { router, type Href } from 'expo-router';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { SectionHeader } from '@/src/components/SectionHeader';
 
@@ -21,12 +21,15 @@ import {
   goalProgressPct,
   localDateYmd,
 } from './mapNutrition';
-import { HYDRATION_QUICK_ML, type MacroExplainLabel } from './types';
+import { hydrationPresetVolumes } from './mapNutritionSettings';
+import { DEFAULT_QUICK_ADD_VOLUMES } from './nutritionSettingsTypes';
+import { type MacroExplainLabel } from './types';
 import {
   useNextFuelingWindowQuery,
   useQuickAddHydration,
   useTodayNutritionQuery,
 } from './useNutrition';
+import { useNutritionSettingsQuery } from './useNutritionSettings';
 
 function openNutritionLog() {
   router.push('/(app)/(tabs)/log?section=nutrition' as Href);
@@ -107,6 +110,15 @@ export function NutritionGlance() {
   });
   const { data: nextWindow } = useNextFuelingWindowQuery({ enabled: trackingEnabled });
   const hydrationAdd = useQuickAddHydration();
+  const { data: nutritionSettings } = useNutritionSettingsQuery({ enabled: trackingEnabled });
+
+  // Same source of truth as HydrationQuickAddSheet, so both surfaces agree (CW-342).
+  // While settings load or the request fails, this falls back to 250/500/750 rather
+  // than rendering an empty row.
+  const hydrationVolumes = useMemo(
+    () => hydrationPresetVolumes(nutritionSettings?.quickAddVolumes, DEFAULT_QUICK_ADD_VOLUMES),
+    [nutritionSettings?.quickAddVolumes],
+  );
 
   const [explainLabel, setExplainLabel] = useState<MacroExplainLabel | null>(null);
 
@@ -236,11 +248,11 @@ export function NutritionGlance() {
                 </View>
               </View>
 
-              {/* Hydration quick-add — web-parity preset volumes (CW-304) */}
+              {/* Hydration quick-add — athlete's configured preset volumes (CW-304, CW-342) */}
               <View className="mt-2.5 flex-row items-center gap-2">
-                {HYDRATION_QUICK_ML.map((ml) => (
+                {hydrationVolumes.map((ml, index) => (
                   <Pressable
-                    key={ml}
+                    key={`${ml}-${index}`}
                     accessibilityRole="button"
                     accessibilityLabel={`Log ${ml} milliliters of fluid`}
                     disabled={hydrationAdd.isPending}
