@@ -462,6 +462,57 @@ export async function runHealthSyncPass(
   return inFlight;
 }
 
+/** Hard cap on how far back a manual retry may widen the platform read. */
+const MAX_RETRY_LOOKBACK_DAYS = 400;
+
+/** Parse a ledger anchor (`YYYY-MM-DD` local date or ISO timestamp) as a local day. */
+function parseLedgerAnchor(anchor: string): Date | null {
+  const ymd = /^(\d{4})-(\d{2})-(\d{2})$/.exec(anchor);
+  if (ymd) {
+    return new Date(Number(ymd[1]), Number(ymd[2]) - 1, Number(ymd[3]));
+  }
+  const parsed = new Date(anchor);
+  return Number.isFinite(parsed.getTime()) ? parsed : null;
+}
+
+/**
+ * Lookback a manual retry needs so the platform read actually reaches the item's
+ * own date. The ledger keeps 90 wellness days / 100 workouts, far beyond the
+ * 14-day pass lookback, so retrying an older item used to read a window that
+ * could never contain it and always threw "No on-device metrics for that day"
+ * (CW-462). Readers treat `lookbackDays` as the floor of their window, so
+ * widening it here is enough for both HealthKit and Health Connect.
+ */
+export function retryLookbackDays(anchor: string | undefined, now: Date = new Date()): number {
+  if (!anchor) return LOOKBACK_DAYS;
+  const anchorDate = parseLedgerAnchor(anchor);
+  if (!anchorDate) return LOOKBACK_DAYS;
+  const startOfAnchor = new Date(anchorDate);
+  startOfAnchor.setHours(0, 0, 0, 0);
+  const startOfToday = new Date(now);
+  startOfToday.setHours(0, 0, 0, 0);
+  const days =
+    Math.floor((startOfToday.getTime() - startOfAnchor.getTime()) / (24 * 60 * 60 * 1000)) + 1;
+  if (!Number.isFinite(days)) return LOOKBACK_DAYS;
+  // +1 day of slack so a session started near local midnight stays inside.
+  return Math.min(MAX_RETRY_LOOKBACK_DAYS, Math.max(LOOKBACK_DAYS, days + 1));
+}
+
+/**
+ * Fail a manual retry *visibly*: the reason is written to the item's lastError
+ * so the Sync history row explains itself, and re-thrown so the caller can
+ * surface it too. Without this, precondition failures were invisible — the user
+ * tapped Retry, felt an error haptic, and nothing on screen ever changed.
+ */
+async function failLedgerItemWith(item: SyncLedgerItem, message: string): Promise<never> {
+  try {
+    await saveLedgerItem(completeLedgerFailure(item, message));
+  } catch {
+    // Persisting the reason is best-effort — the throw below still surfaces it.
+  }
+  throw new Error(message);
+}
+
 async function throwLedgerFailure(id: string): Promise<never> {
   const updated = await getLedgerItem(id);
   throw new Error(updated?.lastError ?? 'Sync failed');
@@ -508,11 +559,13 @@ async function retryLedgerItemImpl(id: string): Promise<void> {
   if (!item) throw new Error('Sync item not found');
 
   if (item.kind === 'wellness') {
-    if (!item.localDate) throw new Error('Missing wellness date');
-    const samples = await readPlatformWellness({ lookbackDays: LOOKBACK_DAYS });
+    if (!item.localDate) throw await failLedgerItemWith(item, 'Missing wellness date');
+    // Widen the read so it covers this item's own day, not just the pass window.
+    const lookbackDays = retryLookbackDays(item.localDate);
+    const samples = await readPlatformWellness({ lookbackDays });
     const sample = samples.find((s) => s.date === item.localDate);
     if (!sample || !sampleHasMetrics(sample)) {
-      throw new Error('No on-device metrics for that day');
+      throw await failLedgerItemWith(item, 'No on-device metrics for that day');
     }
     const status = await syncWellnessSample(sample, true, generation);
     if (status === 'failed') await throwLedgerFailure(id);
@@ -522,11 +575,12 @@ async function retryLedgerItemImpl(id: string): Promise<void> {
   if (!prefs.syncWorkouts) {
     throw new Error('Enable Sync workouts first');
   }
-  const sessions = await readPlatformWorkouts({ lookbackDays: LOOKBACK_DAYS });
+  const lookbackDays = retryLookbackDays(item.startedAt);
+  const sessions = await readPlatformWorkouts({ lookbackDays });
   const sessionId = id.replace(/^workout:/, '');
   const session = sessions.find((s) => s.platformSessionId === sessionId);
-  if (!session) throw new Error('Workout no longer on device');
-  const remotes = await fetchRemoteWorkoutsForMatch(LOOKBACK_DAYS);
+  if (!session) throw await failLedgerItemWith(item, 'Workout no longer on device');
+  const remotes = await fetchRemoteWorkoutsForMatch(lookbackDays);
   const status = await syncWorkoutSession(session, remotes, true, generation);
   if (status === 'failed') await throwLedgerFailure(id);
 }

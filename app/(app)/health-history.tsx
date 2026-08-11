@@ -81,6 +81,7 @@ export default function HealthSyncHistoryScreen() {
   const diagnostic = useSyncDiagnostic();
   const [filter, setFilter] = useState<Filter>('all');
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [syncingAll, setSyncingAll] = useState(false);
   const [resyncing, setResyncing] = useState(false);
 
@@ -89,10 +90,14 @@ export default function HealthSyncHistoryScreen() {
   const handleRetry = async (id: string) => {
     hapticLight();
     setBusyId(id);
+    setActionError(null);
     try {
       await retryLedgerItem(id);
       hapticSuccess();
-    } catch {
+    } catch (err) {
+      // Surface why the retry could not run — the reason is also written to the
+      // item's lastError, but a precondition failure needs to be visible now.
+      setActionError(err instanceof Error ? err.message : 'Retry failed');
       hapticError();
     } finally {
       setBusyId(null);
@@ -161,6 +166,9 @@ export default function HealthSyncHistoryScreen() {
           <Text className="mt-2 text-xs leading-4 text-text-muted">
             Resync all re-reads the full lookback window and re-uploads changed items.
           </Text>
+          {actionError ? (
+            <Text className="mt-2 text-xs leading-4 text-danger">{actionError}</Text>
+          ) : null}
           {diagnostic ? (
             <View className="mt-3 rounded-xl border border-danger/40 bg-danger/10 px-3 py-3">
               <Text className="text-xs font-semibold text-danger">
