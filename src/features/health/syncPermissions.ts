@@ -169,7 +169,7 @@ export async function requestHealthSyncPermissions(): Promise<boolean> {
     if (Platform.OS === 'android') {
       const HC = await import('react-native-health-connect');
       const status = await HC.getSdkStatus();
-      if (status !== 3) return false;
+      if (status !== HC.SdkAvailabilityStatus.SDK_AVAILABLE) return false;
       await HC.initialize();
       const granted = await HC.requestPermission([...HEALTH_CONNECT_SYNC_PERMISSIONS]);
       return Array.isArray(granted) && hasRequiredHealthConnectPermissions(granted);

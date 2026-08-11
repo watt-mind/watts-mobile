@@ -119,7 +119,7 @@ async function drainHealthConnectChanges(): Promise<boolean> {
     const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
     const HC = await import('react-native-health-connect');
     const status = await HC.getSdkStatus();
-    if (status !== 3) return false;
+    if (status !== HC.SdkAvailabilityStatus.SDK_AVAILABLE) return false;
     await HC.initialize();
 
     // Ask only for types we actually hold a read grant on — see
