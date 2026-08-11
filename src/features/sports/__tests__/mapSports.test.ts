@@ -3,7 +3,12 @@ import { describe, expect, it } from 'vitest';
 import {
   buildSportSettingsUpsertPayload,
   formFromSportProfile,
+  formHasInvalidNumbers,
+  isSwimSportProfile,
+  paceUnitForSport,
   parseSportProfilesFromProfileResponse,
+  thresholdPaceFieldLabel,
+  thresholdPaceHelperText,
   toSportThresholdPatch,
 } from '../mapSports';
 import type { SportProfile } from '../types';
@@ -129,5 +134,105 @@ describe('formFromSportProfile threshold pace display', () => {
       true,
     );
     expect(patch?.thresholdPace).toBeCloseTo(mps, 5);
+  });
+});
+
+describe('pace unit resolution (CW-483)', () => {
+  const swim: SportProfile = { ...sample, name: 'Swimming', types: ['Swim', 'OpenWaterSwim'] };
+  const run: SportProfile = { ...sample, name: 'Running', types: ['Run', 'VirtualRun'] };
+
+  it('detects swim profiles by type or name', () => {
+    expect(isSwimSportProfile(swim)).toBe(true);
+    expect(isSwimSportProfile({ ...sample, name: 'Pool swim', types: [] })).toBe(true);
+    expect(isSwimSportProfile(run)).toBe(false);
+    expect(isSwimSportProfile(sample)).toBe(false);
+  });
+
+  it('always uses per-100m for swim, whatever the distance preference', () => {
+    expect(paceUnitForSport(swim, 'Kilometers')).toBe('per-100m');
+    expect(paceUnitForSport(swim, 'Miles')).toBe('per-100m');
+  });
+
+  it('follows the athlete distanceUnits preference for non-swim sports', () => {
+    expect(paceUnitForSport(run, 'Kilometers')).toBe('per-km');
+    expect(paceUnitForSport(run, 'Miles')).toBe('per-mile');
+  });
+
+  it('defaults to per-km when the athlete profile has not loaded', () => {
+    expect(paceUnitForSport(run, null)).toBe('per-km');
+    expect(paceUnitForSport(run, undefined)).toBe('per-km');
+    expect(paceUnitForSport(run)).toBe('per-km');
+  });
+
+  it('labels the field with the single resolved unit', () => {
+    expect(thresholdPaceFieldLabel('per-mile')).toBe('Threshold pace (min/mi)');
+    expect(thresholdPaceFieldLabel('per-100m')).toBe('Threshold pace (min/100m)');
+    expect(thresholdPaceHelperText('per-100m')).toBe('Format mm:ss per 100 m (e.g. 1:45).');
+    expect(thresholdPaceHelperText('per-km')).toBe('Format mm:ss per km (e.g. 5:15).');
+    // Never describes three units at once any more.
+    expect(thresholdPaceHelperText('per-mile')).not.toContain('100m');
+  });
+});
+
+describe('threshold pace form uses the resolved unit end to end', () => {
+  const swim: SportProfile = { ...sample, name: 'Swimming', types: ['Swim'] };
+
+  it('renders a correct 1.25 m/s swim threshold as 1:20, not 13:20', () => {
+    expect(formFromSportProfile({ ...swim, thresholdPace: 1.25 }, 'per-100m').thresholdPace).toBe(
+      '1:20',
+    );
+  });
+
+  it('stores 8:00 typed by a miles runner as 3.353 m/s', () => {
+    const patch = toSportThresholdPatch(
+      { ftp: '250', lthr: '165', maxHr: '185', thresholdPace: '8:00' },
+      true,
+      'per-mile',
+    );
+    expect(patch?.thresholdPace).toBeCloseTo(3.3528, 4);
+  });
+
+  it('stores 1:45 typed by a swimmer as 0.952 m/s', () => {
+    const patch = toSportThresholdPatch(
+      { ftp: '250', lthr: '165', maxHr: '185', thresholdPace: '1:45' },
+      true,
+      'per-100m',
+    );
+    expect(patch?.thresholdPace).toBeCloseTo(0.9524, 4);
+  });
+
+  it('round-trips display -> parse in every unit', () => {
+    for (const [unit, meters] of [
+      ['per-km', 1000],
+      ['per-mile', 1609.344],
+      ['per-100m', 100],
+    ] as const) {
+      const mps = meters / (5.25 * 60);
+      const label = formFromSportProfile({ ...sample, thresholdPace: mps }, unit).thresholdPace;
+      const patch = toSportThresholdPatch(
+        { ftp: '250', lthr: '165', maxHr: '185', thresholdPace: label },
+        true,
+        unit,
+      );
+      expect(patch?.thresholdPace).toBeCloseTo(mps, 5);
+    }
+  });
+
+  it('validates the pace field against the resolved unit', () => {
+    const base = { ftp: '250', lthr: '165', maxHr: '185' };
+    expect(formHasInvalidNumbers({ ...base, thresholdPace: '1:45' }, true, 'per-100m')).toBe(false);
+    expect(formHasInvalidNumbers({ ...base, thresholdPace: 'nope' }, true, 'per-mile')).toBe(true);
+    expect(formHasInvalidNumbers({ ...base, thresholdPace: 'nope' }, false, 'per-mile')).toBe(
+      false,
+    );
+  });
+
+  it('accepts a comma decimal in the pace field (CW-484)', () => {
+    const patch = toSportThresholdPatch(
+      { ftp: '250', lthr: '165', maxHr: '185', thresholdPace: '5,25' },
+      true,
+      'per-km',
+    );
+    expect(patch?.thresholdPace).toBeCloseTo(1000 / 315, 5);
   });
 });

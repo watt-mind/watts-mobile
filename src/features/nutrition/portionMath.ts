@@ -1,3 +1,5 @@
+import { parseDecimal } from '@/src/lib/parseDecimal';
+
 import type { FoodItemResult } from './api';
 
 export interface ScaledPortion {
@@ -30,10 +32,17 @@ export function scalePortion(per100g: Per100g | undefined, grams: number): Scale
   };
 }
 
-/** Parse the grams text field. Blank or non-positive input reads as 0. */
+/**
+ * Parse the grams text field. Blank, unparseable or non-positive input reads as 0,
+ * which the portion UI treats as "nothing selected" (the log button stays disabled)
+ * — it is never sent to the server as a real weight.
+ *
+ * Comma decimals are accepted (CW-484): `parseFloat("0,5")` returned 0, so a
+ * half-portion scaled to a 0 kcal item.
+ */
 export function parseGrams(input: string): number {
-  const parsed = parseFloat(input);
-  return Number.isNaN(parsed) || parsed <= 0 ? 0 : parsed;
+  const parsed = parseDecimal(input);
+  return parsed == null || parsed <= 0 ? 0 : parsed;
 }
 
 /** An item's default portion: its own serving size when known, otherwise 100 g. */

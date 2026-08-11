@@ -1,8 +1,21 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  celsiusToDisplayTemperature,
+  elevationUnitLabel,
   formatActivityDate,
+  formatAltitudeAxisM,
+  formatAxisDistanceKm,
+  formatClimbDistanceKm,
+  formatClimbElevationM,
   formatDistanceMeters,
+  formatElevationMeters,
+  formatTemperatureC,
+  kmToDisplayDistance,
+  metersToDisplayElevation,
+  spokenDistanceKm,
+  spokenElevationM,
+  spokenTemperatureC,
   formatDuration,
   formatIntensityFactor,
   mapActivityAnalysis,
@@ -751,5 +764,74 @@ describe('formatActivityDate', () => {
     expect(formatActivityDate('2026-07-23')).toContain('Jul 23');
     expect(formatActivityDate('2026-07-23T00:00:00.000Z')).toContain('Jul 23');
     expect(formatActivityDate('2026-07-23T00:00:00Z')).toContain('Jul 23');
+  });
+});
+
+describe('display units (CW-491)', () => {
+  it('formats elevation in metres by default and feet for a Miles athlete', () => {
+    expect(formatElevationMeters(1200)).toBe('1,200 m');
+    expect(formatElevationMeters(1200, 'Kilometers')).toBe('1,200 m');
+    expect(formatElevationMeters(1200, 'Miles')).toBe('3,937 ft');
+  });
+
+  it('still rejects missing / non-positive elevation in both unit systems', () => {
+    for (const units of ['Kilometers', 'Miles'] as const) {
+      expect(formatElevationMeters(null, units)).toBeNull();
+      expect(formatElevationMeters(0, units)).toBeNull();
+      expect(formatElevationMeters('1200', units)).toBeNull();
+      expect(formatElevationMeters(Number.NaN, units)).toBeNull();
+    }
+  });
+
+  it('converts kilometres and metres to the athlete display unit', () => {
+    expect(kmToDisplayDistance(100, 'Kilometers')).toBe(100);
+    expect(kmToDisplayDistance(1.609344, 'Miles')).toBeCloseTo(1);
+    expect(metersToDisplayElevation(1200, 'Kilometers')).toBe(1200);
+    expect(metersToDisplayElevation(1200, 'Miles')).toBeCloseTo(3937.008, 2);
+    expect(elevationUnitLabel('Kilometers')).toBe('m');
+    expect(elevationUnitLabel('Miles')).toBe('ft');
+  });
+
+  it('converts Celsius to the athlete temperature unit', () => {
+    expect(celsiusToDisplayTemperature(0, 'Celsius')).toBe(0);
+    expect(celsiusToDisplayTemperature(0, 'Fahrenheit')).toBe(32);
+    expect(celsiusToDisplayTemperature(100, 'Fahrenheit')).toBe(212);
+    expect(celsiusToDisplayTemperature(18.5, 'Fahrenheit')).toBeCloseTo(65.3, 5);
+  });
+
+  it('formats terrain / climb ledger strings per preference', () => {
+    expect(formatClimbDistanceKm(3.2, 'Kilometers')).toBe('3.2 km');
+    expect(formatClimbDistanceKm(3.2, 'Miles')).toBe('2.0 mi');
+    expect(formatClimbElevationM(412, 'Kilometers')).toBe('412 m');
+    expect(formatClimbElevationM(412, 'Miles')).toBe('1,352 ft');
+    expect(formatAltitudeAxisM(1200, 'Miles')).toBe('3,937');
+    expect(formatTemperatureC(18.5, 'Celsius')).toBe('18.5°C');
+    expect(formatTemperatureC(18.5, 'Fahrenheit')).toBe('65.3°F');
+  });
+
+  it('formats screen-reader strings per preference', () => {
+    expect(spokenDistanceKm(3.2, 'Kilometers')).toBe('3.2 kilometres');
+    expect(spokenDistanceKm(3.2, 'Miles')).toBe('2.0 miles');
+    expect(spokenElevationM(412, 'Kilometers')).toBe('412 metres');
+    expect(spokenElevationM(412, 'Miles')).toBe('1,352 feet');
+    expect(spokenTemperatureC(18.5, 'Celsius')).toBe('18.5 degrees Celsius');
+    expect(spokenTemperatureC(18.5, 'Fahrenheit')).toBe('65.3 degrees Fahrenheit');
+  });
+
+  it('carries the elevation preference into the workout summary metric list', () => {
+    const raw = { elevationGain: 1200 } as never;
+    const km = mapWorkoutSummaryMetrics(raw, 'Kilometers');
+    expect(km.find((m) => m.key === 'elevation')?.value).toBe('1,200 m');
+    const mi = mapWorkoutSummaryMetrics(raw, 'Miles');
+    expect(mi.find((m) => m.key === 'elevation')?.value).toBe('3,937 ft');
+  });
+});
+
+describe('terrain axis distance (CW-491)', () => {
+  it('respects the requested precision in both unit systems', () => {
+    expect(formatAxisDistanceKm(12.4, 'Kilometers', 1)).toBe('12.4 km');
+    expect(formatAxisDistanceKm(12.4, 'Kilometers', 0)).toBe('12 km');
+    expect(formatAxisDistanceKm(80.4672, 'Miles', 0)).toBe('50 mi');
+    expect(formatAxisDistanceKm(80.4672, 'Miles', 1)).toBe('50.0 mi');
   });
 });

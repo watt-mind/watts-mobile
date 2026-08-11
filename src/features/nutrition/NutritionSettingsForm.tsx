@@ -12,6 +12,7 @@ import {
 import { friendlyError } from '@/src/api/errors';
 import { Button } from '@/src/components/Button';
 import { hapticError, hapticLight, hapticSuccess } from '@/src/lib/haptics';
+import { parseDecimal } from '@/src/lib/parseDecimal';
 import { Colors } from '@/src/theme/colors';
 import { useThemeColors } from '@/src/theme/useThemeColors';
 import { useTabScrollPadding } from '@/src/hooks/useTabScrollPadding';
@@ -98,7 +99,7 @@ function NumberField({
   if (value !== previousValue) {
     setPreviousValue(value);
     const next = value == null ? '' : String(value);
-    setText((prev) => (prev === next || Number(prev) === value ? prev : next));
+    setText((prev) => (prev === next || parseDecimal(prev) === value ? prev : next));
   }
 
   return (
@@ -118,8 +119,10 @@ function NumberField({
             onChange(null);
             return;
           }
-          const n = Number(next.replace(',', '.'));
-          if (Number.isFinite(n)) onChange(n);
+          // Shared comma-decimal tolerant parse (CW-484). An unparseable keystroke
+          // keeps the last committed value instead of committing 0.
+          const n = parseDecimal(next);
+          if (n != null) onChange(n);
         }}
         className="rounded-lg border border-border-strong bg-surface px-3 py-2.5 text-base text-text-primary"
         placeholderTextColor={theme.textMuted}

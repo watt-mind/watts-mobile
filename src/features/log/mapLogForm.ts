@@ -1,5 +1,6 @@
 import { displayWeightToKg, kgToDisplayWeight } from '@/src/features/profile/mapProfile';
 import type { WeightUnits } from '@/src/features/profile/types';
+import { parseDecimal } from '@/src/lib/parseDecimal';
 
 import type { LogFormValues, WellnessDay, WellnessUploadPayload } from './types';
 import { clampSubjectiveScore, normalizeStressScore } from './wellnessLabels';
@@ -27,11 +28,15 @@ export function addLocalMonthsYmd(monthsAhead: number, from = new Date()): strin
   return localDateYmd(d);
 }
 
+/**
+ * Parse an optional numeric field. Comma decimals are accepted (CW-484): the
+ * decimal-pad keyboard emits ',' as its only decimal key in comma-decimal
+ * locales, so `Number("70,5")` used to be NaN and the weigh-in was dropped
+ * while the sheet still reported "Saved".
+ */
 function parseOptionalNumber(value: string): number | undefined {
-  const trimmed = value.trim();
-  if (!trimmed) return undefined;
-  const n = Number(trimmed);
-  return Number.isFinite(n) ? n : undefined;
+  const n = parseDecimal(value);
+  return n == null ? undefined : n;
 }
 
 /**
@@ -48,6 +53,22 @@ function parseNonNegativeNumber(value: string): number | undefined {
 function asSubjective(value: unknown): number | null {
   if (typeof value !== 'number' || !Number.isFinite(value)) return null;
   return clampSubjectiveScore(value);
+}
+
+/**
+ * Fields that were filled in but cannot be parsed as numbers. Callers must block
+ * the save and surface these instead of letting `toWellnessPayload` omit them —
+ * a silently dropped weigh-in looks identical to a successful save.
+ */
+export function logFormInvalidFields(values: LogFormValues): ('sleepHours' | 'weight')[] {
+  const invalid: ('sleepHours' | 'weight')[] = [];
+  if (values.sleepHours.trim() && parseOptionalNumber(values.sleepHours) === undefined) {
+    invalid.push('sleepHours');
+  }
+  if (values.weight.trim() && parseOptionalNumber(values.weight) === undefined) {
+    invalid.push('weight');
+  }
+  return invalid;
 }
 
 export function formHasContent(values: LogFormValues): boolean {

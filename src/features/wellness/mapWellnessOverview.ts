@@ -1,4 +1,6 @@
+import { kgToDisplayWeight, weightUnitLabel } from '@/src/features/profile/mapProfile';
 import { calculateTrend } from '@/src/features/profile/trend';
+import type { WeightUnits } from '@/src/features/profile/types';
 
 import {
   isPlausibleRestingHr,
@@ -140,7 +142,15 @@ export function heuristicCoachNote(input: {
   return 'Listen to your body and adjust training intensity based on how you feel throughout your session.';
 }
 
-export function mapWellnessOverview(json: unknown): WellnessOverview | null {
+export type WellnessOverviewUnits = {
+  /** Athlete display preference; the API always stores/returns kilograms. */
+  weightUnits: WeightUnits;
+};
+
+export function mapWellnessOverview(
+  json: unknown,
+  units: WellnessOverviewUnits = { weightUnits: 'Kilograms' },
+): WellnessOverview | null {
   if (json == null) return null;
   const root = asRecord(json);
   if (!root) return null;
@@ -224,7 +234,14 @@ export function mapWellnessOverview(json: unknown): WellnessOverview | null {
       recoveryTrendPercent,
     ),
     metric('readiness', 'Readiness', readiness != null ? Math.round(readiness) : null, '', null),
-    metric('weight', 'Weight', weight != null ? Number(weight.toFixed(1)) : null, '', null),
+    // Plausibility runs on kg (ratio comparison, unit-invariant); only display converts.
+    metric(
+      'weight',
+      'Weight',
+      kgToDisplayWeight(weight, units.weightUnits),
+      weightUnitLabel(units.weightUnits),
+      null,
+    ),
     metric('stress', 'Stress', stress != null ? Math.round(stress) : null, '', null),
     metric('mood', 'Mood', mood != null ? Math.round(mood) : null, '', null),
     metric('spo2', 'SpO2', spo2 != null ? Math.round(spo2) : null, '%', null),
