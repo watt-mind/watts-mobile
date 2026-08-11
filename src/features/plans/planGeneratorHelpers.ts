@@ -59,15 +59,27 @@ export function clampDurationWeeks(weeks: number): number {
   return Math.min(52, Math.max(4, Math.round(weeks)));
 }
 
-/** Whole weeks from start→end (calendar days / 7, floored). */
+/**
+ * Whole weeks from start→end (calendar days / 7, floored).
+ *
+ * CW-485: measured on the UTC timeline built from the Y/M/D triples, never
+ * from local-time millis — two local midnights either side of a DST spring
+ * forward are only 6 days 23h apart, which used to drop an exact 4-week span
+ * to 3 and block a legitimate plan.
+ */
 export function weeksBetweenYmd(startYmd: string, endYmd: string): number {
+  return Math.floor(daysBetweenYmd(startYmd, endYmd) / 7);
+}
+
+/** Whole calendar days from start→end (0 when either side is unparseable or end < start). */
+export function daysBetweenYmd(startYmd: string, endYmd: string): number {
   const [sy, sm, sd] = startYmd.split('-').map(Number);
   const [ey, em, ed] = endYmd.split('-').map(Number);
   if (!sy || !sm || !sd || !ey || !em || !ed) return 0;
-  const start = new Date(sy, sm - 1, sd).getTime();
-  const end = new Date(ey, em - 1, ed).getTime();
+  const start = Date.UTC(sy, sm - 1, sd);
+  const end = Date.UTC(ey, em - 1, ed);
   if (end < start) return 0;
-  return Math.floor((end - start) / (7 * 86400000));
+  return Math.round((end - start) / 86400000);
 }
 
 export function resolvePlanEndDateYmd(input: {

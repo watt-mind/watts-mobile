@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
+import { CRITICAL_TIME_ZONES, TZ_NEW_YORK, withTimeZone } from '@/src/test/timezone';
+
 import {
   addWeeksToYmd,
   buildAvailabilityDays,
@@ -93,6 +95,32 @@ describe('plan calendar helpers', () => {
     expect(weeksBetweenYmd('2026-07-24', '2026-08-21')).toBe(4);
     expect(isPlanSpanValid('2026-07-24', '2026-08-21')).toBe(true);
     expect(isPlanSpanValid('2026-07-24', '2026-08-01')).toBe(false);
+  });
+
+  // CW-485: counting elapsed milliseconds between two LOCAL midnights loses an
+  // hour across spring-forward, which drops the floor by a whole week whenever
+  // the span is an exact multiple of 7 days.
+  describe('DST spans (CW-485)', () => {
+    for (const tz of CRITICAL_TIME_ZONES) {
+      it(`counts calendar weeks across spring-forward in ${tz}`, () => {
+        withTimeZone(tz, () => {
+          // 2026-03-08 is the US spring-forward; 2026-03-29 is the EU/NZ one.
+          expect(weeksBetweenYmd('2026-03-01', '2026-03-29')).toBe(4);
+          expect(isPlanSpanValid('2026-03-01', '2026-03-29')).toBe(true);
+          expect(weeksBetweenYmd('2026-03-01', '2026-05-31')).toBe(13);
+          // Autumn transitions must not round a partial week up either.
+          expect(weeksBetweenYmd('2026-10-25', '2026-11-21')).toBe(3);
+          expect(weeksBetweenYmd('2026-03-01', '2026-03-28')).toBe(3);
+        });
+      });
+    }
+
+    it('adds weeks on the local calendar across spring-forward', () => {
+      withTimeZone(TZ_NEW_YORK, () => {
+        expect(addWeeksToYmd('2026-03-01', 4)).toBe('2026-03-29');
+        expect(nextMondayYmd(new Date(2026, 2, 6))).toBe('2026-03-09');
+      });
+    });
   });
 
   it('clamps duration weeks 4–52', () => {
