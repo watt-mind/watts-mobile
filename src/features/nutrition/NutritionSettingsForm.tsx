@@ -14,6 +14,7 @@ import {
   computeTargetCalories,
   computeTdee,
   defaultAdjustmentForGoal,
+  quickAddVolumesError,
   settingsFormEquals,
   toNutritionSettingsPayload,
 } from './mapNutritionSettings';
@@ -243,6 +244,13 @@ export function NutritionSettingsForm({ initial }: { initial: NutritionSettingsS
   }
 
   const dirty = useMemo(() => !settingsFormEquals(form, baseline), [form, baseline]);
+  // The save payload de-duplicates quick-add volumes, so a typed duplicate would
+  // otherwise leave Save silently greyed out (`dirty` false) with no explanation.
+  // Surface the reason instead, and block Save on it (CW-542).
+  const quickAddError = useMemo(
+    () => quickAddVolumesError([...form.quickAddVolumes]),
+    [form.quickAddVolumes],
+  );
   const tdee = computeTdee(form);
   const targetCalories = computeTargetCalories(form);
 
@@ -299,6 +307,11 @@ export function NutritionSettingsForm({ initial }: { initial: NutritionSettingsS
       hapticError();
       return;
     }
+    if (quickAddError) {
+      setFormError(quickAddError);
+      hapticError();
+      return;
+    }
     try {
       const payload = toNutritionSettingsPayload(form);
       const saved = await saveMutation.mutateAsync(payload);
@@ -333,7 +346,7 @@ export function NutritionSettingsForm({ initial }: { initial: NutritionSettingsS
         <Button
           label={saveMutation.isPending ? 'Saving…' : 'Save'}
           onPress={() => void onSave()}
-          disabled={!dirty || saveMutation.isPending}
+          disabled={!dirty || quickAddError != null || saveMutation.isPending}
         />
       </View>
 
@@ -678,13 +691,18 @@ export function NutritionSettingsForm({ initial }: { initial: NutritionSettingsS
             ])
           }
         />
+        {quickAddError ? (
+          <Text className="px-4 py-3 text-xs text-danger" testID="nutrition-quick-add-error">
+            {quickAddError}
+          </Text>
+        ) : null}
       </SectionCard>
 
       <View className="mt-6">
         <Button
           label={saveMutation.isPending ? 'Saving…' : 'Save nutrition settings'}
           onPress={() => void onSave()}
-          disabled={!dirty || saveMutation.isPending}
+          disabled={!dirty || quickAddError != null || saveMutation.isPending}
         />
       </View>
     </ScrollView>
