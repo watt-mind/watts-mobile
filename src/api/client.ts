@@ -50,26 +50,41 @@ function resolveUrl(instanceBaseUrl: string, path: string): string {
   return `${instanceBaseUrl}/api${normalizedPath}`;
 }
 
-/** Shared single-flight refresh — use from apiFetch and coachChatFetch to avoid parallel rotations. */
-export async function singleFlightRefresh(
-  instanceBaseUrl: string,
-  refreshToken: string,
-): Promise<StoredTokens> {
+/**
+ * Shared single-flight refresh — use from apiFetch and coachChatFetch to avoid parallel rotations.
+ *
+ * The refresh token is read from storage *inside* the single-flight closure rather than
+ * being passed in by the caller (CW-458). A caller snapshot taken before the await can be
+ * stale by the time the refresh actually starts: `refreshPromise` is cleared in `.finally()`
+ * as soon as a concurrent refresh settles, and `refreshAccessToken` persists the rotated
+ * tokens before resolving. A second refresh started with an already-consumed single-use
+ * refresh token gets `invalid_grant`, which `failAuthSession` would then treat as a genuine
+ * invalidation and wipe the freshly-minted, valid session.
+ */
+export async function singleFlightRefresh(instanceBaseUrl: string): Promise<StoredTokens> {
   const generation = getAuthSessionGeneration();
   if (!refreshPromise || refreshPromiseGeneration !== generation) {
     refreshPromiseGeneration = generation;
-    refreshPromise = refreshAccessToken({ instanceBaseUrl, refreshToken })
-      .then((tokens) => {
-        if (generation !== getAuthSessionGeneration()) {
-          throw new Error('Auth session changed during token refresh');
-        }
-        return tokens;
-      })
-      .finally(() => {
-        if (refreshPromiseGeneration === generation) {
-          refreshPromise = null;
-        }
+    refreshPromise = (async () => {
+      const stored = await loadTokens();
+      if (!stored?.refreshToken) {
+        // Treated as an invalidation by callers (isAuthTokenInvalidationError): there is
+        // no credential left to recover the session with.
+        throw new ApiError('No refresh token available', 401);
+      }
+      const tokens = await refreshAccessToken({
+        instanceBaseUrl,
+        refreshToken: stored.refreshToken,
       });
+      if (generation !== getAuthSessionGeneration()) {
+        throw new Error('Auth session changed during token refresh');
+      }
+      return tokens;
+    })().finally(() => {
+      if (refreshPromiseGeneration === generation) {
+        refreshPromise = null;
+      }
+    });
   }
   return refreshPromise;
 }
@@ -115,12 +130,25 @@ export async function apiFetch(path: string, options: ApiFetchOptions = {}): Pro
     headers.set('Accept', 'application/json');
   }
 
+  // The access token this request actually went out with. Used after a 401 to detect that a
+  // concurrent request already refreshed while this one was on the wire (CW-458).
+  let requestAccessToken: string | undefined;
   if (!options.skipAuth) {
     const tokens = await loadTokens();
     if (tokens?.accessToken) {
+      requestAccessToken = tokens.accessToken;
       headers.set('Authorization', `Bearer ${tokens.accessToken}`);
     }
   }
+
+  const retryWithAccessToken = async (accessToken: string): Promise<Response> => {
+    const retryHeaders = new Headers(options.headers);
+    if (!retryHeaders.has('Accept')) {
+      retryHeaders.set('Accept', 'application/json');
+    }
+    retryHeaders.set('Authorization', `Bearer ${accessToken}`);
+    return fetch(url, { ...options, headers: retryHeaders });
+  };
 
   const response = await fetch(url, { ...options, headers });
 
@@ -142,20 +170,30 @@ export async function apiFetch(path: string, options: ApiFetchOptions = {}): Pro
     return response;
   }
 
-  const tokens = await loadTokens();
+  let tokens = await loadTokens();
+
+  // A concurrent request may have already completed a refresh while this request was in
+  // flight — the stored access token is then newer than the one this request used. Retry
+  // with it instead of starting a second refresh: the stored refresh token has already been
+  // rotated, so refreshing again would send a consumed single-use token, get invalid_grant
+  // back, and clear the session that was just successfully renewed (CW-458).
+  if (requestAccessToken && tokens?.accessToken && tokens.accessToken !== requestAccessToken) {
+    const retry = await retryWithAccessToken(tokens.accessToken);
+    if (retry.status !== 401) {
+      return retry;
+    }
+    // The newer token was rejected too — fall through to a genuine refresh.
+    tokens = await loadTokens();
+  }
+
   if (!tokens?.refreshToken) {
     await failAuthSession(sessionGeneration, `401 on ${path} with no refresh token`);
     return response;
   }
 
   try {
-    const refreshed = await singleFlightRefresh(instanceBaseUrl, tokens.refreshToken);
-    const retryHeaders = new Headers(options.headers);
-    if (!retryHeaders.has('Accept')) {
-      retryHeaders.set('Accept', 'application/json');
-    }
-    retryHeaders.set('Authorization', `Bearer ${refreshed.accessToken}`);
-    const retry = await fetch(url, { ...options, headers: retryHeaders });
+    const refreshed = await singleFlightRefresh(instanceBaseUrl);
+    const retry = await retryWithAccessToken(refreshed.accessToken);
     if (retry.status === 401) {
       await failAuthSession(sessionGeneration, `401 after refresh on ${path}`);
     }

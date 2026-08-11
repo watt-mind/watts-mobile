@@ -70,7 +70,7 @@ export async function coachChatFetch(
   }
 
   try {
-    const refreshed = await singleFlightRefresh(instanceBaseUrl, tokens.refreshToken);
+    const refreshed = await singleFlightRefresh(instanceBaseUrl);
     const retryHeaders = new Headers(init?.headers);
     if (!retryHeaders.has('Accept')) {
       retryHeaders.set('Accept', 'text/plain, application/json');
