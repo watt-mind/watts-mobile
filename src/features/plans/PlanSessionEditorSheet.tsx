@@ -14,10 +14,11 @@ import { useThemeColors } from '@/src/theme/useThemeColors';
 import { formatDayChipLabel } from './formatPlanCopy';
 import { useCreatePlannedWorkoutMutation, usePatchPlannedWorkoutMutation } from './usePlans';
 import {
-  SESSION_SPORT_OPTIONS,
+  buildSessionEditorPatch,
   emptySessionEditorForm,
   sessionEditorFormFromValues,
   validateSessionEditorForm,
+  SESSION_SPORT_OPTIONS,
   type SessionEditorForm,
   type SessionSportType,
 } from './sessionEditor';
@@ -90,10 +91,11 @@ function Field({
 function EditorBody({ context, onClose }: { context: CreateMode | EditMode; onClose: () => void }) {
   const createMutation = useCreatePlannedWorkoutMutation();
   const patchMutation = usePatchPlannedWorkoutMutation();
-  const initial =
+  const [initial] = useState<SessionEditorForm>(() =>
     context.mode === 'create'
       ? emptySessionEditorForm(context.dateKey)
-      : sessionEditorFormFromValues(context);
+      : sessionEditorFormFromValues(context),
+  );
   const [form, setForm] = useState<SessionEditorForm>(initial);
   const [fieldErrors, setFieldErrors] = useState<
     Partial<Record<'title' | 'type' | 'durationMinutes' | 'dateKey' | 'tss', string>>
@@ -132,17 +134,13 @@ function EditorBody({ context, onClose }: { context: CreateMode | EditMode; onCl
           trainingWeekId: context.trainingWeekId,
         });
       } else {
-        await patchMutation.mutateAsync({
-          id: context.plannedId,
-          input: {
-            date: result.payload.dateKey,
-            title: result.payload.title,
-            type: result.payload.type,
-            durationSec: result.payload.durationSec,
-            tss: result.payload.tss,
-            description: result.payload.description,
-          },
-        });
+        // Sparse patch: only fields the athlete saw and changed (CW-486).
+        const input = buildSessionEditorPatch(initial, result.payload);
+        if (Object.keys(input).length === 0) {
+          onClose();
+          return;
+        }
+        await patchMutation.mutateAsync({ id: context.plannedId, input });
       }
       hapticSuccess();
       onClose();

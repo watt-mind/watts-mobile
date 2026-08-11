@@ -571,15 +571,25 @@ export async function createPlannedWorkout(input: PlannedWorkoutWriteInput): Pro
   return response.json();
 }
 
-/** Patch planned workout fields (content edits re-tag managedBy to USER on server). */
+/**
+ * Patch planned workout fields (content edits re-tag managedBy to USER on server).
+ *
+ * The body is sparse on purpose: every key present is written server-side, and a `null`
+ * value CLEARS that field. Callers must therefore only include fields the athlete actually
+ * saw and changed — never fill absent context with defaults or `null` (CW-486). Keys whose
+ * value is `undefined` are dropped here so a partially-built input cannot clobber data.
+ */
 export async function patchPlannedWorkout(
   plannedWorkoutId: string,
   input: PlannedWorkoutPatchInput,
 ): Promise<unknown> {
+  const body = Object.fromEntries(
+    Object.entries(input).filter(([, value]) => value !== undefined),
+  ) as PlannedWorkoutPatchInput;
   const response = await apiFetch(`/api/planned-workouts/${encodeURIComponent(plannedWorkoutId)}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
+    body: JSON.stringify(body),
   });
   if (!response.ok) {
     const body = await readErrorBody(response);

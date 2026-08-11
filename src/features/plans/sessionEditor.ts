@@ -18,19 +18,28 @@ export type SessionEditorForm = {
 
 export type SessionEditorField = 'title' | 'type' | 'durationMinutes' | 'dateKey' | 'tss';
 
+export type SessionEditorPayload = {
+  title: string;
+  type: SessionSportType;
+  durationSec: number;
+  tss: number | null;
+  description: string | null;
+  dateKey: string;
+};
+
 export type SessionEditorValidation =
-  | {
-      ok: true;
-      payload: {
-        title: string;
-        type: SessionSportType;
-        durationSec: number;
-        tss: number | null;
-        description: string | null;
-        dateKey: string;
-      };
-    }
+  | { ok: true; payload: SessionEditorPayload }
   | { ok: false; fieldErrors: Partial<Record<SessionEditorField, string>> };
+
+/** Sparse PATCH body — only keys the athlete actually changed are present (CW-486). */
+export type SessionEditorPatch = {
+  date?: string;
+  title?: string;
+  type?: string;
+  durationSec?: number;
+  tss?: number | null;
+  description?: string | null;
+};
 
 export function emptySessionEditorForm(dateKey: string): SessionEditorForm {
   return {
@@ -64,6 +73,39 @@ export function sessionEditorFormFromValues(input: {
         : '60',
     tss: input.tss != null && Number.isFinite(input.tss) ? String(Math.round(input.tss)) : '',
     description: input.description ?? '',
+  };
+}
+
+function normalizeDurationSec(durationMinutes: string): number | null {
+  const minutes = Number(durationMinutes);
+  if (!durationMinutes.trim() || !Number.isFinite(minutes) || minutes <= 0) return null;
+  return Math.round(minutes * 60);
+}
+
+function normalizeTss(tss: string): number | null {
+  const raw = tss.trim();
+  if (!raw) return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return Math.round(n);
+}
+
+/** Comparable (payload-shaped) view of a form, used to diff edits against the initial state. */
+function normalizeSessionEditorForm(form: SessionEditorForm): {
+  dateKey: string;
+  title: string;
+  type: string;
+  durationSec: number | null;
+  tss: number | null;
+  description: string | null;
+} {
+  return {
+    dateKey: form.dateKey,
+    title: form.title.trim(),
+    type: form.type,
+    durationSec: normalizeDurationSec(form.durationMinutes),
+    tss: normalizeTss(form.tss),
+    description: form.description.trim() || null,
   };
 }
 
@@ -106,4 +148,25 @@ export function validateSessionEditorForm(form: SessionEditorForm): SessionEdito
       dateKey: form.dateKey,
     },
   };
+}
+
+/**
+ * Build a sparse PATCH body by diffing the submitted payload against the form the athlete
+ * was actually shown. Fields the editor context never supplied (e.g. a coach description
+ * absent from the plan-week list view) stay at their prefill value, so they are never sent
+ * and can never clobber server data (CW-486). Unchanged fields are omitted too.
+ */
+export function buildSessionEditorPatch(
+  initial: SessionEditorForm,
+  payload: SessionEditorPayload,
+): SessionEditorPatch {
+  const base = normalizeSessionEditorForm(initial);
+  const patch: SessionEditorPatch = {};
+  if (payload.dateKey !== base.dateKey) patch.date = payload.dateKey;
+  if (payload.title !== base.title) patch.title = payload.title;
+  if (payload.type && payload.type !== base.type) patch.type = payload.type;
+  if (payload.durationSec !== base.durationSec) patch.durationSec = payload.durationSec;
+  if (payload.tss !== base.tss) patch.tss = payload.tss;
+  if (payload.description !== base.description) patch.description = payload.description;
+  return patch;
 }
