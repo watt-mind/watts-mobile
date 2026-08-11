@@ -23,28 +23,23 @@ const OPTIONS: {
   {
     value: 'auto',
     title: 'Automatic',
-    detail: 'Nutrition when tracking is on, otherwise Recovery.',
+    detail: 'Open the Log overview with nothing expanded.',
   },
   {
     value: 'nutrition',
     title: 'Nutrition',
-    detail: 'Open Log on the nutrition quick-log tab.',
+    detail: 'Open Log with nutrition & hydration details expanded.',
     needsNutrition: true,
-  },
-  {
-    value: 'recovery',
-    title: 'Recovery',
-    detail: 'Open Log on recovery events.',
   },
   {
     value: 'wellness',
     title: 'Wellness',
-    detail: 'Open Log on the daily wellness check-in.',
+    detail: 'Open Log with the daily wellness check-in ready.',
   },
   {
     value: 'measurements',
     title: 'Measurements',
-    detail: 'Open Log on body measurements.',
+    detail: 'Open Log with body measurement details expanded.',
   },
 ];
 
@@ -95,8 +90,8 @@ export default function LogSettingsScreen() {
         >
           <Text className="text-2xl font-semibold text-text-primary">Default log view</Text>
           <Text className="mt-2 text-sm text-text-muted">
-            Choose which Log tab opens first. Deep links (Check in, History, Nutrition) still jump
-            to the right section.
+            Choose what opens when you enter the Log tab. Deep links (Check in, Nutrition,
+            Measurements) always win over this default.
           </Text>
 
           <View className="mt-6 overflow-hidden rounded-xl border border-border bg-card">

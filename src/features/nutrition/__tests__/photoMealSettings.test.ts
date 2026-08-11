@@ -54,6 +54,25 @@ describe('photoMealSettings', () => {
     expect(getSavePhotoToLibrarySync()).toBe(true);
   });
 
+  it('hydrates persisted settings even when the in-memory value is still the default', async () => {
+    // The quick-action auto-open path depends on this: the store starts at
+    // 'ask'/false and only hydrates on demand, so it must read storage rather
+    // than trust the current in-memory snapshot.
+    vi.resetModules();
+    const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+    await AsyncStorage.setItem('watts.nutrition.photoSourceMode.v1', 'camera');
+    await AsyncStorage.setItem('watts.nutrition.savePhotoToLibrary.v1', 'true');
+
+    const freshModule = await import('../photoMealSettings');
+    expect(freshModule.isPhotoMealSettingsHydrated()).toBe(false);
+    expect(freshModule.getPhotoSourceModeSync()).toBe('ask');
+
+    expect(await freshModule.loadPhotoMealSettings()).toEqual({
+      sourceMode: 'camera',
+      saveToLibrary: true,
+    });
+  });
+
   it('provides user-friendly labels for photo source modes', () => {
     expect(photoSourceModeLabel('ask')).toBe('Ask every time');
     expect(photoSourceModeLabel('camera')).toBe('Always open Camera');

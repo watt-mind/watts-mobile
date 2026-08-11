@@ -9,8 +9,10 @@ import { Button } from '@/src/components/Button';
 import { Skeleton } from '@/src/components/Skeleton';
 import { WellnessCheckinSheet } from '@/src/features/log/WellnessCheckinSheet';
 import { isDailyCheckinCompleted } from '@/src/features/log/isDailyCheckinCompleted';
+import { resolveLogScreenIntent } from '@/src/features/log/logScreenIntent';
 import { formFromWellness, formHasContent } from '@/src/features/log/mapLogForm';
 import { useDailyCheckinQuery } from '@/src/features/log/useDailyCheckin';
+import { useLogTabPreference } from '@/src/features/log/useLogTabPreference';
 import { useTodayWellnessQuery } from '@/src/features/log/useLog';
 import { MeasurementSheet } from '@/src/features/measurements/MeasurementSheet';
 import { MeasurementsDetailSheet } from '@/src/features/measurements/MeasurementsDetailSheet';
@@ -64,63 +66,89 @@ export default function LogScreen() {
   const [measurementSheetOpen, setMeasurementSheetOpen] = useState(false);
   const launchedPhotoTokenRef = useRef<string | null>(null);
   const untokenedCameraBusyRef = useRef(false);
+  // The default-log-view preference opens its sheet once per screen instance,
+  // and only when the athlete did not arrive through a deep link.
+  const defaultViewAppliedRef = useRef(false);
+  const { preference: logTabPreference, ready: logTabPreferenceReady } = useLogTabPreference();
 
   // Detail Sheet States
-  const [nutritionDetailSheetOpen, setNutritionDetailSheetOpen] = useState(
-    params.section === 'nutrition' && !params.action,
-  );
-  const [measurementsDetailSheetOpen, setMeasurementsDetailSheetOpen] = useState(
-    params.section === 'measurements' && !params.action,
-  );
+  const [nutritionDetailSheetOpen, setNutritionDetailSheetOpen] = useState(false);
+  const [measurementsDetailSheetOpen, setMeasurementsDetailSheetOpen] = useState(false);
 
   useEffect(() => {
     const timeout = setTimeout(() => {
-      if (params.action === 'camera') {
-        const launchToken = typeof params.t === 'string' && params.t.length > 0 ? params.t : null;
+      // Single param-consumption mechanism: decide, act, then strip the params
+      // so a still-mounted Log tab cannot re-open a sheet on the next switch.
+      const intent = resolveLogScreenIntent({
+        action: params.action,
+        section: params.section,
+        token: params.t,
+        nutritionEnabled,
+        onPhotoMealRoute: pathname.includes('photo-meal'),
+        handledPhotoToken: launchedPhotoTokenRef.current,
+        untokenedCameraBusy: untokenedCameraBusyRef.current,
+        preference: logTabPreference,
+        preferenceReady: logTabPreferenceReady,
+        defaultViewApplied: defaultViewAppliedRef.current,
+      });
 
-        if (launchToken != null) {
-          if (launchedPhotoTokenRef.current === launchToken) return;
-          launchedPhotoTokenRef.current = launchToken;
-        } else if (untokenedCameraBusyRef.current) {
-          return;
-        } else {
-          untokenedCameraBusyRef.current = true;
-        }
-
-        router.setParams({ action: undefined, t: undefined });
-
-        // Match Today: do not open AI photo logging when nutrition tracking is off.
-        if (!nutritionEnabled) {
-          untokenedCameraBusyRef.current = false;
-          return;
-        }
-
-        // Avoid stacking multiple fullscreen photo-meal routes.
-        if (pathname.includes('photo-meal')) {
-          untokenedCameraBusyRef.current = false;
-          return;
-        }
-
-        router.push('/(app)/(tabs)/log/photo-meal' as Href);
-        untokenedCameraBusyRef.current = false;
-        return;
+      if (intent.markDefaultViewApplied) {
+        defaultViewAppliedRef.current = true;
       }
 
-      untokenedCameraBusyRef.current = false;
+      if (intent.handledPhotoToken != null) {
+        launchedPhotoTokenRef.current = intent.handledPhotoToken;
+      }
+      if (intent.claimUntokenedCamera) {
+        untokenedCameraBusyRef.current = true;
+      }
 
-      if (params.action === 'meal') {
-        setMealSheetOpen(true);
-      } else if (params.action === 'water') {
-        setHydrationSheetOpen(true);
-      } else if (params.action === 'wellness' || params.section === 'wellness') {
-        // Legacy entry points (Today glance, daily check-in) still use ?section=wellness
-        setWellnessSheetOpen(true);
-      } else if (params.action === 'measurement') {
-        setMeasurementSheetOpen(true);
+      if (intent.clearParams.length > 0) {
+        const next: Record<string, undefined> = {};
+        for (const key of intent.clearParams) next[key] = undefined;
+        router.setParams(next);
+      }
+
+      switch (intent.open) {
+        case 'meal':
+          setMealSheetOpen(true);
+          break;
+        case 'water':
+          setHydrationSheetOpen(true);
+          break;
+        case 'wellness':
+          setWellnessSheetOpen(true);
+          break;
+        case 'measurement':
+          setMeasurementSheetOpen(true);
+          break;
+        case 'nutritionDetail':
+          setNutritionDetailSheetOpen(true);
+          break;
+        case 'measurementsDetail':
+          setMeasurementsDetailSheetOpen(true);
+          break;
+        case 'photoMealRoute':
+          router.push('/(app)/(tabs)/log/photo-meal' as Href);
+          break;
+        default:
+          break;
+      }
+
+      if (intent.releaseUntokenedCamera) {
+        untokenedCameraBusyRef.current = false;
       }
     }, 0);
     return () => clearTimeout(timeout);
-  }, [params.action, params.section, params.t, nutritionEnabled, pathname]);
+  }, [
+    params.action,
+    params.section,
+    params.t,
+    nutritionEnabled,
+    pathname,
+    logTabPreference,
+    logTabPreferenceReady,
+  ]);
 
   const wellnessInitialValues = useMemo(
     () =>
