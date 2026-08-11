@@ -18,6 +18,7 @@ import {
   quickLogHasContent,
   removeItemFromDay,
   roundMacro,
+  quickLogInvalidFields,
   toNutritionUploadPayload,
 } from '../mapNutrition';
 
@@ -480,5 +481,50 @@ describe('removeItemFromDay', () => {
     // onError path: restore previous reference
     expect(previous.items).toHaveLength(1);
     expect(previous.items[0]?.id).toBe('a');
+  });
+});
+
+describe('quick-log comma-decimal input (CW-484)', () => {
+  it('keeps macros typed with a comma decimal', () => {
+    const payload = toNutritionUploadPayload(
+      {
+        meal: 'SNACK',
+        name: 'Banana',
+        calories: '105',
+        protein: '1,3',
+        carbs: '27,5',
+        fat: '0,4',
+      },
+      '2026-01-05',
+      new Date('2026-01-05T10:00:00.000Z'),
+    );
+    const item = payload.items[0]!;
+    expect(item.calories).toBe(105);
+    expect(item.protein).toBe(1.3);
+    expect(item.carbs).toBe(27.5);
+    expect(item.fat).toBe(0.4);
+  });
+
+  it('flags filled-but-unparseable quick-log fields', () => {
+    expect(
+      quickLogInvalidFields({
+        meal: 'SNACK',
+        name: 'x',
+        calories: '105',
+        protein: '1,3',
+        carbs: '',
+        fat: 'lots',
+      }),
+    ).toEqual(['fat']);
+    expect(
+      quickLogInvalidFields({
+        meal: 'SNACK',
+        name: 'x',
+        calories: '',
+        protein: '',
+        carbs: '',
+        fat: '',
+      }),
+    ).toEqual([]);
   });
 });

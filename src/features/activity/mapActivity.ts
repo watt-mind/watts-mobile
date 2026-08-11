@@ -1,3 +1,5 @@
+import { distanceUnitLabel, temperatureUnitLabel } from '@/src/features/profile/mapProfile';
+
 import type {
   ActivityAnalysis,
   ActivityListItem,
@@ -148,6 +150,11 @@ export function formatIntensityFactor(value: unknown): string | null {
 }
 
 export type DistanceDisplayUnits = 'Kilometers' | 'Miles';
+export type TemperatureDisplayUnits = 'Celsius' | 'Fahrenheit';
+
+export const METERS_PER_MILE = 1609.344;
+export const FEET_PER_METER = 3.28084;
+export const KM_PER_MILE = METERS_PER_MILE / 1000;
 
 export function formatDistanceMeters(
   meters: unknown,
@@ -155,17 +162,115 @@ export function formatDistanceMeters(
 ): string | null {
   if (typeof meters !== 'number' || !Number.isFinite(meters) || meters <= 0) return null;
   if (units === 'Miles') {
-    const miles = meters / 1609.344;
+    const miles = meters / METERS_PER_MILE;
     if (miles >= 0.1) return `${miles.toFixed(1)} mi`;
-    return `${Math.round(meters * 3.28084)} ft`;
+    return `${Math.round(meters * FEET_PER_METER)} ft`;
   }
   if (meters >= 1000) return `${(meters / 1000).toFixed(1)} km`;
   return `${Math.round(meters)} m`;
 }
 
-export function formatElevationMeters(meters: unknown): string | null {
+/** Kilometres in the athlete's chosen unit (source data is always metric). */
+export function kmToDisplayDistance(km: number, units: DistanceDisplayUnits): number {
+  if (!Number.isFinite(km)) return 0;
+  return units === 'Miles' ? km / KM_PER_MILE : km;
+}
+
+/** Metres of climbing in the athlete's chosen unit. */
+export function metersToDisplayElevation(meters: number, units: DistanceDisplayUnits): number {
+  if (!Number.isFinite(meters)) return 0;
+  return units === 'Miles' ? meters * FEET_PER_METER : meters;
+}
+
+export function elevationUnitLabel(units: DistanceDisplayUnits): string {
+  return units === 'Miles' ? 'ft' : 'm';
+}
+
+export function celsiusToDisplayTemperature(
+  celsius: number,
+  units: TemperatureDisplayUnits,
+): number {
+  if (!Number.isFinite(celsius)) return 0;
+  return units === 'Fahrenheit' ? celsius * 1.8 + 32 : celsius;
+}
+
+export function formatElevationMeters(
+  meters: unknown,
+  units: DistanceDisplayUnits = 'Kilometers',
+): string | null {
   if (typeof meters !== 'number' || !Number.isFinite(meters) || meters <= 0) return null;
-  return `${Math.round(meters)} m`;
+  return `${Math.round(metersToDisplayElevation(meters, units)).toLocaleString()} ${elevationUnitLabel(units)}`;
+}
+
+/**
+ * Activity-detail cache keys. They live in this (dependency-free) module rather than in
+ * the hook file so they stay unit-testable in the node test env — `useActivity.ts` pulls
+ * in the API client and its expo dependencies.
+ *
+ * The distance preference is part of the key: the summary payload is formatted per-unit
+ * server-side, so a result fetched under one preference must not be served under another.
+ */
+export function activityDetailQueryPrefix(id: string) {
+  return ['activity', 'detail', id] as const;
+}
+
+export function activityDetailQueryKey(
+  id: string,
+  distanceUnits: DistanceDisplayUnits = 'Kilometers',
+) {
+  return [...activityDetailQueryPrefix(id), distanceUnits] as const;
+}
+
+/* ---- Terrain / climb ledger display (CW-491) -------------------------------
+ * Pure so the terrain component stays dumb and the unit decisions stay testable.
+ * Source data is always metric (km, m, °C); every string below is a display concern.
+ */
+
+/** "3.2 km" / "2.0 mi" — one decimal, matching the climb ledger. */
+export function formatClimbDistanceKm(km: number, units: DistanceDisplayUnits): string {
+  return `${kmToDisplayDistance(km, units).toFixed(1)} ${distanceUnitLabel(units)}`;
+}
+
+/** "412 m" / "1,352 ft". */
+export function formatClimbElevationM(meters: number, units: DistanceDisplayUnits): string {
+  return `${Math.round(metersToDisplayElevation(meters, units)).toLocaleString()} ${elevationUnitLabel(units)}`;
+}
+
+/** Axis tick with unit, at a caller-chosen precision ("12.4 km" / "7 mi"). */
+export function formatAxisDistanceKm(
+  km: number,
+  units: DistanceDisplayUnits,
+  digits: number,
+): string {
+  return `${kmToDisplayDistance(km, units).toFixed(digits)} ${distanceUnitLabel(units)}`;
+}
+
+/** Bare axis number in the display unit, no unit suffix ("1352"). */
+export function formatAltitudeAxisM(meters: number, units: DistanceDisplayUnits): string {
+  return Math.round(metersToDisplayElevation(meters, units)).toLocaleString();
+}
+
+/** "18.5°C" / "65.3°F". */
+export function formatTemperatureC(celsius: number, units: TemperatureDisplayUnits): string {
+  return `${celsiusToDisplayTemperature(celsius, units).toFixed(1)}${temperatureUnitLabel(units)}`;
+}
+
+/** Screen-reader form: "18.5 degrees Celsius" / "65.3 degrees Fahrenheit". */
+export function spokenTemperatureC(celsius: number, units: TemperatureDisplayUnits): string {
+  const scale = units === 'Fahrenheit' ? 'Fahrenheit' : 'Celsius';
+  return `${celsiusToDisplayTemperature(celsius, units).toFixed(1)} degrees ${scale}`;
+}
+
+/** Screen-reader form: "3.2 kilometres" / "2.0 miles". */
+export function spokenDistanceKm(km: number, units: DistanceDisplayUnits): string {
+  const value = kmToDisplayDistance(km, units).toFixed(1);
+  return `${value} ${units === 'Miles' ? 'miles' : 'kilometres'}`;
+}
+
+/** Screen-reader form: "412 metres gained" / "1,352 feet gained". */
+export function spokenElevationM(meters: number, units: DistanceDisplayUnits): string {
+  const value = Math.round(metersToDisplayElevation(meters, units)).toLocaleString();
+  return `${value} ${units === 'Miles' ? 'feet' : 'metres'}`;
 }
 
 function formatWatts(watts: unknown): string | null {
@@ -255,7 +360,7 @@ export function mapWorkoutSummaryMetrics(
   const hr = formatHr(raw.averageHr);
   if (hr) metrics.push({ key: 'avgHr', label: 'Avg HR', value: hr });
 
-  const elev = formatElevationMeters(raw.elevationGain);
+  const elev = formatElevationMeters(raw.elevationGain, distanceUnits);
   if (elev) metrics.push({ key: 'elevation', label: 'Elevation', value: elev });
 
   const intensity = formatIntensityFactor(raw.intensity);

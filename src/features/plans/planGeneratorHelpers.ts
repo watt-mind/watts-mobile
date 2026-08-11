@@ -1,5 +1,6 @@
 import { localDateYmd } from '@/src/features/log/mapLogForm';
 import { localDateKey } from '@/src/features/today/weekGlance';
+import { ymdToLocalEndOfDayIso, ymdToLocalStartOfDayIso } from '@/src/lib/wireDate';
 
 import type { AvailabilityDay } from './api';
 import type { PlanInitializeResult, PlanStrategy, StartingPhase, VolumePreference } from './types';
@@ -27,14 +28,26 @@ export type PhaseGlance = {
   type: string | null;
 };
 
-/** Local calendar YYYY-MM-DD → initialize/activate ISO at UTC noon (matches goal create). */
-export function planDateIsoNoon(ymd: string): string {
-  return new Date(`${ymd}T12:00:00.000Z`).toISOString();
+/**
+ * Local calendar YYYY-MM-DD → initialize/activate `startDate`.
+ *
+ * CW-493: `/api/plans/initialize` validates `z.string().datetime()` (so a bare
+ * YYYY-MM-DD is rejected) and then re-derives the calendar day from the
+ * instant using the athlete's stored timezone. A fixed UTC hour therefore
+ * lands on the wrong day at the extremes — UTC noon is a day late at UTC+12,
+ * UTC midnight a day early at UTC-5 — so the instant of *local* midnight is
+ * sent, matching the web PlanWizard.
+ */
+export function planStartDateIso(ymd: string): string {
+  return ymdToLocalStartOfDayIso(ymd);
 }
 
-/** End-of-day ISO for initialize `endDate` (web PlanWizard uses 23:59:59). */
+/** @deprecated Misnomer since CW-493 — the anchor is local midnight, not UTC noon. Use `planStartDateIso`. */
+export const planDateIsoNoon = planStartDateIso;
+
+/** End-of-day ISO for initialize `endDate`, anchored to the athlete's local day (CW-493). */
 export function planEndDateIso(ymd: string): string {
-  return new Date(`${ymd}T23:59:59.000Z`).toISOString();
+  return ymdToLocalEndOfDayIso(ymd);
 }
 
 export function addWeeksToYmd(ymd: string, weeks: number): string {
@@ -59,15 +72,27 @@ export function clampDurationWeeks(weeks: number): number {
   return Math.min(52, Math.max(4, Math.round(weeks)));
 }
 
-/** Whole weeks from start→end (calendar days / 7, floored). */
+/**
+ * Whole weeks from start→end (calendar days / 7, floored).
+ *
+ * CW-485: measured on the UTC timeline built from the Y/M/D triples, never
+ * from local-time millis — two local midnights either side of a DST spring
+ * forward are only 6 days 23h apart, which used to drop an exact 4-week span
+ * to 3 and block a legitimate plan.
+ */
 export function weeksBetweenYmd(startYmd: string, endYmd: string): number {
+  return Math.floor(daysBetweenYmd(startYmd, endYmd) / 7);
+}
+
+/** Whole calendar days from start→end (0 when either side is unparseable or end < start). */
+export function daysBetweenYmd(startYmd: string, endYmd: string): number {
   const [sy, sm, sd] = startYmd.split('-').map(Number);
   const [ey, em, ed] = endYmd.split('-').map(Number);
   if (!sy || !sm || !sd || !ey || !em || !ed) return 0;
-  const start = new Date(sy, sm - 1, sd).getTime();
-  const end = new Date(ey, em - 1, ed).getTime();
+  const start = Date.UTC(sy, sm - 1, sd);
+  const end = Date.UTC(ey, em - 1, ed);
   if (end < start) return 0;
-  return Math.floor((end - start) / (7 * 86400000));
+  return Math.round((end - start) / 86400000);
 }
 
 export function resolvePlanEndDateYmd(input: {

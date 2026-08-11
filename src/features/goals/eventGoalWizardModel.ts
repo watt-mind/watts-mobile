@@ -1,5 +1,6 @@
 import { isValidCalendarYmd } from '@/src/features/log/mapLogForm';
 import { localDateKey } from '@/src/features/today/weekGlance';
+import { ymdToWireDate } from '@/src/lib/wireDate';
 
 import type { CreateGoalInput, GoalType } from './types';
 
@@ -101,14 +102,17 @@ export function emptyEventGoalWizardForm(type: GoalType = 'EVENT'): EventGoalWiz
   };
 }
 
-/** Web PlanWizard / EventGoalWizard deadline: local date @ 23:59:59 UTC. */
-export function ymdToIsoEndOfDay(ymd: string): string {
-  return new Date(`${ymd}T23:59:59.000Z`).toISOString();
-}
-
-export function ymdToIsoStartOfDay(ymd: string): string {
-  return new Date(`${ymd}T00:00:00.000Z`).toISOString();
-}
+/**
+ * EventGoalWizard deadline / event date on the wire.
+ *
+ * CW-493: both used to be UTC-anchored at a fixed hour (`T23:59:59Z` for the
+ * deadline, `T00:00:00Z` for the event), and the 23:59:59 variant pushed the
+ * day forward for every zone east of UTC — a Kolkata (UTC+5:30) deadline of
+ * Aug 10 landed at 05:29 local on Aug 11 and the countdown read one day
+ * short. Both are now the canonical UTC-midnight day marker, which
+ * `localDateKey` round-trips unchanged in every zone.
+ */
+export const ymdToGoalDateIso = ymdToWireDate;
 
 export type SelectableEvent = {
   id: string;
@@ -283,7 +287,7 @@ export function buildEventGoalWizardInput(
     input.description = form.description.trim();
   }
   if (targetYmd && isValidCalendarYmd(targetYmd)) {
-    input.targetDate = ymdToIsoEndOfDay(targetYmd);
+    input.targetDate = ymdToGoalDateIso(targetYmd);
   }
 
   if (form.type === 'EVENT') {
@@ -292,7 +296,7 @@ export function buildEventGoalWizardInput(
       input.eventIds = [...form.eventIds];
       input.eventId = form.eventIds[form.eventIds.length - 1];
       if (primary?.dateKey) {
-        input.eventDate = ymdToIsoStartOfDay(primary.dateKey);
+        input.eventDate = ymdToGoalDateIso(primary.dateKey);
       }
       if (primary?.distance != null) input.distance = primary.distance;
       if (primary?.elevation != null) input.elevation = primary.elevation;
@@ -303,8 +307,8 @@ export function buildEventGoalWizardInput(
 
     // Activation / empty-calendar path — server creates a linked event from stub.
     const dateIso = targetYmd
-      ? ymdToIsoStartOfDay(targetYmd)
-      : ymdToIsoStartOfDay(form.targetDate.trim());
+      ? ymdToGoalDateIso(targetYmd)
+      : ymdToGoalDateIso(form.targetDate.trim());
     input.eventData = {
       title,
       date: dateIso,

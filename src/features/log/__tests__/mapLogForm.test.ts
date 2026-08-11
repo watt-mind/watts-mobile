@@ -4,6 +4,7 @@ import {
   emptyLogForm,
   formHasContent,
   formFromWellness,
+  logFormInvalidFields,
   pickTodayWellness,
   toWellnessPayload,
 } from '../mapLogForm';
@@ -99,5 +100,42 @@ describe('mapLogForm', () => {
       'Pounds',
     );
     expect(payload.weight).toBeCloseTo(72.575, 2);
+  });
+});
+
+describe('comma-decimal numeric input (CW-484)', () => {
+  it('records a weigh-in typed with a comma decimal', () => {
+    const payload = toWellnessPayload(
+      { ...emptyLogForm(), weight: '70,5' },
+      '2026-01-05',
+      'Kilograms',
+    );
+    expect(payload.weight).toBe(70.5);
+  });
+
+  it('records sleep hours typed with a comma decimal', () => {
+    const payload = toWellnessPayload({ ...emptyLogForm(), sleepHours: '7,5' }, '2026-01-05');
+    expect(payload.sleepHours).toBe(7.5);
+  });
+
+  it('converts a comma-decimal weight from pounds to kg', () => {
+    const payload = toWellnessPayload(
+      { ...emptyLogForm(), weight: '155,5' },
+      '2026-01-05',
+      'Pounds',
+    );
+    expect(payload.weight).toBeCloseTo(155.5 * 0.45359237, 2);
+  });
+
+  it('flags filled-but-unparseable fields so the caller can block the save', () => {
+    expect(logFormInvalidFields({ ...emptyLogForm(), weight: '70,5' })).toEqual([]);
+    expect(logFormInvalidFields({ ...emptyLogForm(), weight: 'heavy' })).toEqual(['weight']);
+    expect(logFormInvalidFields({ ...emptyLogForm(), sleepHours: 'lots' })).toEqual(['sleepHours']);
+    expect(logFormInvalidFields(emptyLogForm())).toEqual([]);
+  });
+
+  it('still omits a field that cannot be parsed at all', () => {
+    const payload = toWellnessPayload({ ...emptyLogForm(), weight: 'heavy' }, '2026-01-05');
+    expect(payload.weight).toBeUndefined();
   });
 });

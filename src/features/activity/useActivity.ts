@@ -2,8 +2,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import type { QueryClient } from '@tanstack/react-query';
 
-import type { AthleteProfile } from '@/src/features/profile/types';
-import { ATHLETE_PROFILE_KEY } from '@/src/features/profile/useProfile';
+import type { DistanceUnits } from '@/src/features/profile/types';
+import { useAthleteProfileQuery } from '@/src/features/profile/useProfile';
 import { TODAY_QUERY_KEY } from '@/src/features/today/types';
 
 import {
@@ -20,6 +20,7 @@ import {
   requestWorkoutAnalysis,
   skipPlannedWorkout,
 } from './api';
+import { activityDetailQueryKey, activityDetailQueryPrefix } from './mapActivity';
 import { RECENT_ACTIVITY_LIMIT, UPCOMING_PLANNED_LIMIT, UPCOMING_WINDOW_DAYS } from './types';
 
 export const RECENT_ACTIVITY_QUERY_KEY = ['activity', 'recent'] as const;
@@ -27,9 +28,7 @@ export const UPCOMING_PLANNED_QUERY_KEY = ['activity', 'upcoming'] as const;
 export const ACTIVITY_GLANCE_WORKOUTS_KEY = ['activity', 'glance', 'workouts'] as const;
 export const ACTIVITY_GLANCE_PLANNED_KEY = ['activity', 'glance', 'planned'] as const;
 
-export function activityDetailQueryKey(id: string) {
-  return ['activity', 'detail', id] as const;
-}
+export { activityDetailQueryKey, activityDetailQueryPrefix };
 
 export function activityStreamsQueryKey(id: string) {
   return ['activity', 'streams', id] as const;
@@ -102,13 +101,14 @@ export function useActivityGlancePlannedQuery(start: Date, end: Date) {
 }
 
 export function useActivitySummaryQuery(id: string | undefined) {
-  const queryClient = useQueryClient();
+  // Units belong in the key, not in the queryFn: reading them via getQueryData meant a
+  // deep link that opened before the profile resolved baked the 'Kilometers' fallback
+  // into a cache entry that nothing could invalidate (CW-491).
+  const profileQuery = useAthleteProfileQuery();
+  const distanceUnits: DistanceUnits = profileQuery.data?.distanceUnits ?? 'Kilometers';
   return useQuery({
-    queryKey: activityDetailQueryKey(id ?? ''),
-    queryFn: () => {
-      const profile = queryClient.getQueryData<AthleteProfile>(ATHLETE_PROFILE_KEY);
-      return fetchActivitySummary(id!, profile?.distanceUnits ?? 'Kilometers');
-    },
+    queryKey: activityDetailQueryKey(id ?? '', distanceUnits),
+    queryFn: () => fetchActivitySummary(id!, distanceUnits),
     enabled: Boolean(id),
     refetchInterval: (query) => {
       const phase = query.state.data?.analysis.phase;
@@ -125,7 +125,7 @@ export function useRequestWorkoutAnalysis(id: string | undefined) {
     mutationFn: () => requestWorkoutAnalysis(id!),
     onSuccess: async () => {
       if (!id) return;
-      await queryClient.invalidateQueries({ queryKey: activityDetailQueryKey(id) });
+      await queryClient.invalidateQueries({ queryKey: activityDetailQueryPrefix(id) });
       await queryClient.invalidateQueries({ queryKey: RECENT_ACTIVITY_QUERY_KEY });
     },
   });

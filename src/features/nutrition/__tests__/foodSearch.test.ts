@@ -268,6 +268,13 @@ describe('portionMath', () => {
     expect(parseGrams('0')).toBe(0);
   });
 
+  it('parseGrams accepts comma decimals (CW-484)', () => {
+    expect(parseGrams('0,5')).toBe(0.5);
+    expect(parseGrams('12,5')).toBe(12.5);
+    expect(parseGrams('1 234,5')).toBe(1234.5);
+    expect(parseGrams('12,5g')).toBe(0);
+  });
+
   it('defaults the portion to the serving size, falling back to 100 g', () => {
     expect(defaultPortionGrams({ serving_size_g: 30 })).toBe(30);
     expect(defaultPortionGrams({ serving_size_g: 0 })).toBe(100);

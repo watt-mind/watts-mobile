@@ -6,7 +6,7 @@ import {
   emptyEventGoalWizardForm,
   toggleEventId,
   validateEventGoalWizardForm,
-  ymdToIsoEndOfDay,
+  ymdToGoalDateIso,
 } from '../eventGoalWizardModel';
 
 describe('eventGoalWizard', () => {
@@ -55,7 +55,7 @@ describe('eventGoalWizard', () => {
     expect(input.eventIds).toEqual(['ev-1', 'ev-2']);
     expect(input.eventId).toBe('ev-2');
     expect(input.eventData).toBeUndefined();
-    expect(input.targetDate).toBe(ymdToIsoEndOfDay('2026-10-15'));
+    expect(input.targetDate).toBe(ymdToGoalDateIso('2026-10-15'));
     expect(input.aiContext).toMatch(/Gran Fondo/);
     expect(input.distance).toBe(120);
   });

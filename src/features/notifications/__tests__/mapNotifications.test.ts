@@ -143,9 +143,13 @@ describe('formatNotificationTime', () => {
   });
 
   it('uses locale short date beyond a week', () => {
-    const label = formatNotificationTime('2026-06-05T12:00:00.000Z', now);
+    // The label is rendered in the device's local zone, so the expected day is
+    // derived from the same instant rather than hardcoded — at UTC+12/+13 a
+    // UTC-noon timestamp is already the next local day.
+    const instant = new Date('2026-06-05T12:00:00.000Z');
+    const label = formatNotificationTime(instant.toISOString(), now);
     expect(label).toMatch(/Jun/);
-    expect(label).toMatch(/5/);
+    expect(label).toMatch(new RegExp(`\\b${instant.getDate()}\\b`));
   });
 });
 

@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
+import { localDateKey } from '@/src/features/today/weekGlance';
+import { CRITICAL_TIME_ZONES, withTimeZone } from '@/src/test/timezone';
+
 import {
   buildCreateEventInput,
   defaultEventDateYmd,
@@ -41,7 +44,7 @@ describe('buildCreateEvent', () => {
   it('builds lite POST body', () => {
     expect(buildCreateEventInput(base())).toEqual({
       title: 'Autumn fondo',
-      date: '2026-10-15T12:00:00.000Z',
+      date: '2026-10-15T00:00:00.000Z',
       type: 'Ride',
       priority: 'A',
       location: 'Tuscany',
@@ -57,7 +60,17 @@ describe('buildCreateEvent', () => {
       ),
     ).toEqual({
       title: 'Autumn fondo',
-      date: '2026-10-15T12:00:00.000Z',
+      date: '2026-10-15T00:00:00.000Z',
     });
+  });
+
+  // CW-493: a UTC-noon anchor makes a Sunday A-race show as Monday at UTC+12.
+  it('round-trips the picked calendar day in every zone', () => {
+    for (const tz of CRITICAL_TIME_ZONES) {
+      withTimeZone(tz, () => {
+        const input = buildCreateEventInput(base({ date: '2026-10-15' }));
+        expect(localDateKey(input.date)).toBe('2026-10-15');
+      });
+    }
   });
 });
