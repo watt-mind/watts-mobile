@@ -8,6 +8,7 @@ import {
   fromLocalDateTimeValue,
   isLocalTimestampValid,
   parseRecoveryContextList,
+  recoveryItemOption,
   toJourneyPayload,
 } from '../mapRecovery';
 import { optionById, severityValueFromPreset } from '../taxonomy';
@@ -167,6 +168,92 @@ describe('filterActiveToday', () => {
 
   it('excludes journey events on other local days', () => {
     expect(filterActiveToday([journey], '2099-01-01')).toHaveLength(0);
+  });
+});
+
+describe('recoveryItemOption', () => {
+  const serverItem = (over: Partial<RecoveryContextItem>): RecoveryContextItem => ({
+    id: 'evt-1',
+    sourceRecordId: 'rec-1',
+    kind: 'journey_event',
+    sourceType: 'manual_event',
+    label: 'Recovery context',
+    description: null,
+    severity: 5,
+    startAt: '2026-07-19T08:00:00.000Z',
+    endAt: '2026-07-19T08:00:00.000Z',
+    editable: true,
+    deletable: true,
+    origin: 'Manual',
+    category: null,
+    ...over,
+  });
+
+  it('resolves GI issues from category + eventType, not the free-text label', () => {
+    const option = recoveryItemOption(
+      serverItem({
+        label: 'Stomach trouble on the long ride',
+        category: 'GI_DISTRESS',
+        metadata: { eventType: 'SYMPTOM' },
+      }),
+    );
+    expect(option.id).toBe('gi');
+    expect(option.sf).toBe('allergens');
+    expect(option.id).not.toBe('illness');
+  });
+
+  it('resolves cramping without matching on the label', () => {
+    const option = recoveryItemOption(
+      serverItem({
+        label: 'Calf cramps in the final hour',
+        category: 'CRAMPING',
+        metadata: { eventType: 'SYMPTOM' },
+      }),
+    );
+    expect(option.id).toBe('cramping');
+    expect(option.id).not.toBe('illness');
+  });
+
+  it('resolves mood from a wellness check', () => {
+    const option = recoveryItemOption(
+      serverItem({
+        label: 'Feeling stressed about work',
+        category: 'MOOD',
+        metadata: { eventType: 'WELLNESS_CHECK' },
+      }),
+    );
+    expect(option.id).toBe('mood');
+    expect(option.id).not.toBe('illness');
+  });
+
+  it('falls back to the category match when eventType is missing', () => {
+    const option = recoveryItemOption(serverItem({ label: 'Bad night', category: 'SLEEP' }));
+    expect(option.id).toBe('sleep');
+  });
+
+  it('ignores a non-string metadata.eventType', () => {
+    const option = recoveryItemOption(
+      serverItem({ label: 'Dizzy spells', category: 'DIZZINESS', metadata: { eventType: 42 } }),
+    );
+    expect(option.id).toBe('dizziness');
+  });
+
+  it('returns a stable option when category is null and metadata is absent', () => {
+    const option = recoveryItemOption(serverItem({ label: 'Unknown context', category: null }));
+    expect(option).toBeDefined();
+    expect(option.id).toBe('illness');
+    expect(option.sf).toBeTruthy();
+    expect(option.emoji).toBeTruthy();
+  });
+
+  it('agrees with formFromRecoveryItem — one lookup path', () => {
+    const item = serverItem({
+      label: 'Hungry, underfueled',
+      category: 'HUNGER',
+      metadata: { eventType: 'SYMPTOM' },
+    });
+    expect(formFromRecoveryItem(item).optionId).toBe(recoveryItemOption(item).id);
+    expect(recoveryItemOption(item).id).toBe('hunger');
   });
 });
 
