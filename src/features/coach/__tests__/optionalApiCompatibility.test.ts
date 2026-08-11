@@ -8,6 +8,17 @@ const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
 
 vi.mock('@/src/api/client', () => ({ apiFetch }));
 
+// coach/api builds multipart parts from expo-file-system Files; the native
+// module can't load in Node, and this suite only asserts call options.
+vi.mock('expo-file-system', () => ({
+  File: class {
+    constructor(public uri: string) {}
+    async bytes() {
+      return new Uint8Array();
+    }
+  },
+}));
+
 describe('optional API compatibility', () => {
   beforeEach(() => {
     apiFetch.mockReset();
