@@ -26,11 +26,9 @@ export async function uploadPlatformWorkout(
     cacheFile.write(fitBytes);
 
     const form = new FormData();
-    form.append('file', {
-      uri: cacheFile.uri,
-      type: 'application/octet-stream',
-      name: filename,
-    } as unknown as Blob);
+    // Expo's fetch serializes FormData itself and rejects RN-style `{uri}` parts;
+    // the expo-file-system File implements the Blob interface it expects.
+    form.append('file', cacheFile, filename);
     form.append(
       'metadata',
       JSON.stringify({
