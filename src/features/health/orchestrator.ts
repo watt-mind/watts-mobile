@@ -9,6 +9,7 @@ import {
   completeLedgerPending,
   completeLedgerFailure,
   completeLedgerSuccess,
+  isWorkoutLedgerConverged,
   seedNeedsSync,
   wellnessLedgerId,
   workoutLedgerId,
@@ -104,6 +105,8 @@ export type SyncPassResult = {
   workoutsSynced: number;
   workoutsFailed: number;
   workoutsPending: number;
+  /** Workouts given up on after repeated unresolved queued rounds (CW-463). */
+  workoutsAbandoned: number;
   wellnessPassError: boolean;
   workoutPassError: boolean;
   /** False when the platform store returned no usable data at all (e.g. iOS silently denied reads). */
@@ -117,6 +120,8 @@ export type SyncPassResult = {
 /** Stop auto-retrying an item after this many failed attempts (manual retry still works). */
 const MAX_AUTO_SYNC_ATTEMPTS = 5;
 const QUEUED_RETRY_AFTER_MS = 30 * 60 * 1000;
+/** Give up on a workout the server keeps queueing without an id after this many rounds. */
+const MAX_PENDING_UPLOAD_ROUNDS = 3;
 
 function emptyResult(partial: Partial<SyncPassResult> & { skipped: boolean }): SyncPassResult {
   return {
@@ -127,6 +132,7 @@ function emptyResult(partial: Partial<SyncPassResult> & { skipped: boolean }): S
     workoutsSynced: 0,
     workoutsFailed: 0,
     workoutsPending: 0,
+    workoutsAbandoned: 0,
     wellnessPassError: false,
     workoutPassError: false,
     foundLocalData: false,
@@ -216,14 +222,14 @@ async function syncWorkoutSession(
   remotes: Awaited<ReturnType<typeof fetchRemoteWorkoutsForMatch>>,
   force = false,
   generation?: number,
-): Promise<'synced' | 'pending' | 'failed' | 'skipped' | 'cancelled'> {
+): Promise<'synced' | 'pending' | 'abandoned' | 'failed' | 'skipped' | 'cancelled'> {
   if (generation !== undefined && !isHealthSyncGenerationCurrent(generation)) return 'cancelled';
 
   const id = workoutLedgerId(session.platformSessionId);
   const existing = await getLedgerItem(id);
 
   // Already uploaded/matched — converge without re-upload unless forced.
-  if (!force && existing?.status === 'synced' && existing.remoteWorkoutId) {
+  if (!force && isWorkoutLedgerConverged(existing)) {
     return 'skipped';
   }
 
@@ -247,10 +253,25 @@ async function syncWorkoutSession(
     return 'synced';
   }
 
-  if (!force && existing?.status === 'pending' && existing.lastAttemptAt) {
-    const queuedAt = new Date(existing.lastAttemptAt).getTime();
-    if (Number.isFinite(queuedAt) && Date.now() - queuedAt < QUEUED_RETRY_AFTER_MS) {
-      return 'pending';
+  if (!force && existing?.status === 'pending') {
+    // A queued item that never resolves must not pin the watermark forever:
+    // give up after a bounded number of rounds, record why, and let the pass
+    // move on (manual Retry still forces another attempt) — see CW-463.
+    if (existing.attemptCount >= MAX_PENDING_UPLOAD_ROUNDS) {
+      const abandoned = completeLedgerFailure(
+        existing,
+        `Server accepted the workout but never returned an id (${existing.attemptCount} attempts). Tap Retry to try again.`,
+      );
+      if (generation !== undefined && !isHealthSyncGenerationCurrent(generation))
+        return 'cancelled';
+      await saveLedgerItem(abandoned);
+      return 'abandoned';
+    }
+    if (existing.lastAttemptAt) {
+      const queuedAt = new Date(existing.lastAttemptAt).getTime();
+      if (Number.isFinite(queuedAt) && Date.now() - queuedAt < QUEUED_RETRY_AFTER_MS) {
+        return 'pending';
+      }
     }
   }
 
@@ -284,6 +305,15 @@ async function syncWorkoutSession(
     const result = await uploadPlatformWorkout(session);
     if (generation !== undefined && !isHealthSyncGenerationCurrent(generation)) return 'cancelled';
     if (result.queued && !result.remoteWorkoutId) {
+      if (result.duplicate) {
+        // The server already holds this workout — it just did not hand back an
+        // id (e.g. the duplicate belongs to another source). Treat it as
+        // converged instead of re-uploading it every 30 min forever (CW-463).
+        item = completeLedgerSuccess(item, { serverDuplicateNoId: true });
+        await saveLedgerItem(item);
+        await markHealthSyncSuccess(item.lastSuccessAt);
+        return 'synced';
+      }
       item = completeLedgerPending(item);
       await saveLedgerItem(item);
       return 'pending';
@@ -420,7 +450,7 @@ export async function runHealthSyncPass(
               }),
             );
           }
-          if (existing?.status === 'synced' && existing.remoteWorkoutId && !force) continue;
+          if (!force && isWorkoutLedgerConverged(existing)) continue;
           const status = await syncWorkoutSession(session, remotes, force, generation);
           if (status === 'skipped') continue;
           if (status === 'cancelled') {
@@ -430,6 +460,9 @@ export async function runHealthSyncPass(
           result.workoutsAttempted += 1;
           if (status === 'synced') result.workoutsSynced += 1;
           else if (status === 'pending') result.workoutsPending += 1;
+          // An abandoned item is terminal and recorded on its own ledger row —
+          // it deliberately does not block watermark advancement (CW-463).
+          else if (status === 'abandoned') result.workoutsAbandoned += 1;
           else result.workoutsFailed += 1;
         }
         // Same rule as wellness: only advance once the read actually returned
@@ -582,7 +615,7 @@ async function retryLedgerItemImpl(id: string): Promise<void> {
   if (!session) throw await failLedgerItemWith(item, 'Workout no longer on device');
   const remotes = await fetchRemoteWorkoutsForMatch(lookbackDays);
   const status = await syncWorkoutSession(session, remotes, true, generation);
-  if (status === 'failed') await throwLedgerFailure(id);
+  if (status === 'failed' || status === 'abandoned') await throwLedgerFailure(id);
 }
 
 /**
@@ -609,7 +642,7 @@ async function syncWorkoutByPlatformSessionIdImpl(
   const remotes = await fetchRemoteWorkoutsForMatch(LOOKBACK_DAYS);
   const force = options.force === true;
   const status = await syncWorkoutSession(session, remotes, force, generation);
-  if (status === 'failed') {
+  if (status === 'failed' || status === 'abandoned') {
     await throwLedgerFailure(workoutLedgerId(platformSessionId));
   }
 }

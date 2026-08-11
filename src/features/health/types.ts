@@ -16,6 +16,12 @@ export type SyncLedgerItem = {
   lastSuccessAt?: string;
   lastError?: string;
   remoteWorkoutId?: string;
+  /**
+   * The server reported this workout as a duplicate but returned no workout id
+   * (it already has the data, just not under an id we can record). Treated as
+   * converged so the item stops re-uploading every pass — see CW-463.
+   */
+  serverDuplicateNoId?: boolean;
   /** Stable hash of last-uploaded content; used to skip unchanged re-pushes. */
   contentFingerprint?: string;
   attemptCount: number;

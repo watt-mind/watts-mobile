@@ -62,7 +62,12 @@ export function beginLedgerAttempt(
 
 export function completeLedgerSuccess(
   item: SyncLedgerItem,
-  opts: { remoteWorkoutId?: string; contentFingerprint?: string; at?: string } = {},
+  opts: {
+    remoteWorkoutId?: string;
+    contentFingerprint?: string;
+    serverDuplicateNoId?: boolean;
+    at?: string;
+  } = {},
 ): SyncLedgerItem {
   const at = opts.at ?? new Date().toISOString();
   return {
@@ -72,8 +77,19 @@ export function completeLedgerSuccess(
     lastAttemptAt: at,
     lastError: undefined,
     remoteWorkoutId: opts.remoteWorkoutId ?? item.remoteWorkoutId,
+    serverDuplicateNoId: opts.serverDuplicateNoId ?? item.serverDuplicateNoId,
     contentFingerprint: opts.contentFingerprint ?? item.contentFingerprint,
   };
+}
+
+/**
+ * A workout item is converged when the server demonstrably holds it: either we
+ * recorded its remote id, or the server told us it was a duplicate without one
+ * (CW-463). Converged items are not re-uploaded by later passes.
+ */
+export function isWorkoutLedgerConverged(item: SyncLedgerItem | undefined): boolean {
+  if (!item || item.status !== 'synced') return false;
+  return !!item.remoteWorkoutId || item.serverDuplicateNoId === true;
 }
 
 /**

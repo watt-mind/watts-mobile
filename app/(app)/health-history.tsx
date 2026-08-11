@@ -203,7 +203,12 @@ export default function HealthSyncHistoryScreen() {
             </View>
           ) : (
             visible.map((item) => {
-              const canRetry = item.status === 'failed' || item.status === 'needs_sync';
+              // `pending` items are queued server-side and can stall — let the
+              // user force another attempt instead of stranding them (CW-463).
+              const canRetry =
+                item.status === 'failed' ||
+                item.status === 'needs_sync' ||
+                item.status === 'pending';
               const isBusy = busyId === item.id || item.status === 'syncing';
               return (
                 <View
