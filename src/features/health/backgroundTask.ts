@@ -119,34 +119,19 @@ async function drainHealthConnectChanges(): Promise<boolean> {
     const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
     const HC = await import('react-native-health-connect');
     const status = await HC.getSdkStatus();
-    if (status !== 3) return false;
+    if (status !== HC.SdkAvailabilityStatus.SDK_AVAILABLE) return false;
     await HC.initialize();
+
+    // Ask only for types we actually hold a read grant on — see
+    // grantedHealthConnectChangeRecordTypes (CW-479).
+    const { grantedHealthConnectChangeRecordTypes } = await import('./syncPermissions');
+    const recordTypes = grantedHealthConnectChangeRecordTypes(await HC.getGrantedPermissions());
+    if (recordTypes.length === 0) return false;
 
     const token = await AsyncStorage.getItem(HC_CHANGES_TOKEN_KEY);
     const result = await HC.getChanges({
       ...(token ? { changesToken: token } : {}),
-      recordTypes: [
-        'SleepSession',
-        'Steps',
-        'Distance',
-        'HeartRate',
-        'RestingHeartRate',
-        'HeartRateVariabilityRmssd',
-        'ExerciseSession',
-        'Weight',
-        'BodyFat',
-        'OxygenSaturation',
-        'RespiratoryRate',
-        'Vo2Max',
-        'ActiveCaloriesBurned',
-        'TotalCaloriesBurned',
-        'BasalMetabolicRate',
-        'FloorsClimbed',
-        'Power',
-        'Speed',
-        'CyclingPedalingCadence',
-        'StepsCadence',
-      ],
+      recordTypes,
     });
     if (result.nextChangesToken) {
       await AsyncStorage.setItem(HC_CHANGES_TOKEN_KEY, result.nextChangesToken);
