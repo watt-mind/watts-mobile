@@ -1,5 +1,6 @@
 import type { DistanceUnits } from '@/src/features/profile/types';
 import { humanizeWorkoutType } from '@/src/lib/humanizeWorkoutType';
+import { parseDecimal } from '@/src/lib/parseDecimal';
 import {
   mpsToPaceLabel,
   parsePaceToMps,
@@ -135,10 +136,9 @@ export function showThresholdPace(profile: SportProfile): boolean {
 }
 
 function parseOptionalInt(value: string): number | null | undefined {
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  const n = Number(trimmed);
-  if (!Number.isFinite(n)) return undefined;
+  if (!value.trim()) return null;
+  const n = parseDecimal(value);
+  if (n == null) return undefined;
   return Math.round(n);
 }
 
