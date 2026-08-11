@@ -12,12 +12,32 @@ import {
   type DerivedClimb,
   type TerrainAnalysis,
 } from './climbs';
+import {
+  type DistanceDisplayUnits,
+  type TemperatureDisplayUnits,
+  elevationUnitLabel,
+  formatAltitudeAxisM,
+  formatAxisDistanceKm,
+  formatClimbDistanceKm,
+  formatClimbElevationM,
+  formatTemperatureC,
+  spokenDistanceKm,
+  spokenElevationM,
+  spokenTemperatureC,
+} from './mapActivity';
+import { useAthleteProfileQuery } from '@/src/features/profile/useProfile';
 import { gradientColor, gradientColors } from '@/src/theme/gradientScale';
 import { useThemeColors } from '@/src/theme/useThemeColors';
 
 const TERRAIN_HEIGHT = 132;
 const TERRAIN_PAD = { left: 32, right: 12, top: 23, bottom: 18 } as const;
 const TABULAR_NUMBERS: TextStyle = { fontVariant: ['tabular-nums'] };
+
+/** Athlete display preferences (CW-491) — source terrain data is always metric/°C. */
+type TerrainUnits = {
+  distanceUnits: DistanceDisplayUnits;
+  temperatureUnits: TemperatureDisplayUnits;
+};
 
 function formatDuration(seconds: number): string {
   const minutes = Math.floor(seconds / 60);
@@ -45,12 +65,16 @@ function accessibleDuration(seconds: number): string {
     .join(' ');
 }
 
-function accessibleClimbSummary(climb: DerivedClimb, expanded: boolean): string {
+function accessibleClimbSummary(
+  climb: DerivedClimb,
+  expanded: boolean,
+  units: TerrainUnits,
+): string {
   const summary = [
     `Climb ${climb.index + 1}`,
     climb.category ? `category ${climb.category}` : null,
-    `${(climb.lengthM / 1_000).toFixed(1)} kilometres`,
-    `${Math.round(climb.gainM)} metres gained`,
+    spokenDistanceKm(climb.lengthM / 1_000, units.distanceUnits),
+    `${spokenElevationM(climb.gainM, units.distanceUnits)} gained`,
     `${climb.averageGradePct.toFixed(1)} percent average grade`,
     accessibleDuration(climb.durationSec),
     `${Math.round(climb.vam)} VAM`,
@@ -61,14 +85,14 @@ function accessibleClimbSummary(climb: DerivedClimb, expanded: boolean): string 
   ];
   if (expanded) {
     summary.push(
-      `starts at ${climb.startKm.toFixed(1)} kilometres`,
+      `starts at ${spokenDistanceKm(climb.startKm, units.distanceUnits)}`,
       `${climb.maxGradePct.toFixed(1)} percent maximum grade`,
       climb.averageHeartrate == null
         ? null
         : `${Math.round(climb.averageHeartrate)} beats per minute average`,
       climb.averageTempC == null
         ? null
-        : `${climb.averageTempC.toFixed(1)} degrees Celsius average`,
+        : `${spokenTemperatureC(climb.averageTempC, units.temperatureUnits)} average`,
     );
   }
   return summary.filter(Boolean).join(', ');
@@ -85,9 +109,11 @@ function visibleClimbs(climbs: readonly DerivedClimb[]): DerivedClimb[] {
 function TerrainStrip({
   analysis,
   selectedClimb,
+  units,
 }: {
   analysis: TerrainAnalysis;
   selectedClimb: number | null;
+  units: TerrainUnits;
 }) {
   const theme = useThemeColors();
   const palette = gradientColors(theme);
@@ -113,7 +139,7 @@ function TerrainStrip({
   const endKm = last.distanceM / 1_000;
   const midKm = (startKm + endKm) / 2;
   const kmDigits = endKm - startKm < 25 ? 1 : 0;
-  const accessibilityLabel = `Terrain profile from ${startKm.toFixed(1)} to ${endKm.toFixed(1)} kilometres with ${analysis.climbs.length} climbs`;
+  const accessibilityLabel = `Terrain profile from ${spokenDistanceKm(startKm, units.distanceUnits)} to ${spokenDistanceKm(endKm, units.distanceUnits)} with ${analysis.climbs.length} climbs`;
   const contourPoints = columns
     .map(
       (column) =>
@@ -199,10 +225,12 @@ function TerrainStrip({
                 strokeWidth={1}
               />
               <SvgText x={2} y={TERRAIN_PAD.top + 8} fill={theme.textBody} fontSize={9}>
-                {Math.round(maxAltitude)} m
+                {formatAltitudeAxisM(maxAltitude, units.distanceUnits)}{' '}
+                {elevationUnitLabel(units.distanceUnits)}
               </SvgText>
               <SvgText x={2} y={TERRAIN_PAD.top + plotHeight} fill={theme.textBody} fontSize={9}>
-                {Math.round(minAltitude)} m
+                {formatAltitudeAxisM(minAltitude, units.distanceUnits)}{' '}
+                {elevationUnitLabel(units.distanceUnits)}
               </SvgText>
               {[
                 { value: startKm, anchor: 'start' as const, x: TERRAIN_PAD.left },
@@ -217,7 +245,7 @@ function TerrainStrip({
                   fontSize={9}
                   textAnchor={tick.anchor}
                 >
-                  {tick.value.toFixed(kmDigits)} km
+                  {formatAxisDistanceKm(tick.value, units.distanceUnits, kmDigits)}
                 </SvgText>
               ))}
             </Svg>
@@ -228,7 +256,9 @@ function TerrainStrip({
             className="mr-1.5 h-2 w-2 rounded-full"
             style={{ backgroundColor: theme.textBody }}
           />
-          <Text className="text-xs text-text-body">Elevation (m)</Text>
+          <Text className="text-xs text-text-body">
+            Elevation ({elevationUnitLabel(units.distanceUnits)})
+          </Text>
         </View>
         <View
           className="mt-3 flex-row overflow-hidden rounded-sm"
@@ -256,10 +286,12 @@ function ClimbLedger({
   climbs,
   selectedClimb,
   onSelect,
+  units,
 }: {
   climbs: readonly DerivedClimb[];
   selectedClimb: number | null;
   onSelect: (index: number | null) => void;
+  units: TerrainUnits;
 }) {
   if (climbs.length === 0) {
     return (
@@ -286,7 +318,7 @@ function ClimbLedger({
               key={climb.index}
               accessibilityRole="button"
               accessibilityState={{ expanded }}
-              accessibilityLabel={accessibleClimbSummary(climb, expanded)}
+              accessibilityLabel={accessibleClimbSummary(climb, expanded, units)}
               accessibilityHint={`Double tap to ${expanded ? 'collapse' : 'expand'} climb details`}
               hitSlop={8}
               className={`min-h-11 px-4 py-3 ${
@@ -311,7 +343,8 @@ function ClimbLedger({
                   ) : null}
                 </View>
                 <Text className="text-sm text-text-body" style={TABULAR_NUMBERS}>
-                  {(climb.lengthM / 1_000).toFixed(1)} km · {Math.round(climb.gainM)} m
+                  {formatClimbDistanceKm(climb.lengthM / 1_000, units.distanceUnits)} ·{' '}
+                  {formatClimbElevationM(climb.gainM, units.distanceUnits)}
                 </Text>
               </View>
               <View className="mt-1 flex-row justify-between gap-3">
@@ -325,11 +358,11 @@ function ClimbLedger({
               </View>
               {expanded ? (
                 <Text className="mt-2 text-xs leading-5 text-text-body" style={TABULAR_NUMBERS}>
-                  Starts at {climb.startKm.toFixed(1)} km · max {climb.maxGradePct.toFixed(1)}% ·{' '}
-                  {metric(climb.averageHeartrate, 'bpm')}
+                  Starts at {formatClimbDistanceKm(climb.startKm, units.distanceUnits)} · max{' '}
+                  {climb.maxGradePct.toFixed(1)}% · {metric(climb.averageHeartrate, 'bpm')}
                   {climb.averageTempC == null
                     ? ''
-                    : ` · ${climb.averageTempC.toFixed(1)}°C average`}
+                    : ` · ${formatTemperatureC(climb.averageTempC, units.temperatureUnits)} average`}
                 </Text>
               ) : null}
             </AnimatedPressable>
@@ -350,16 +383,25 @@ export function ActivityTerrainAnalysis({ terrain }: { terrain: ActivityTerrainS
     () => (terrain ? deriveTerrainAnalysis(terrain.points) : null),
     [terrain],
   );
+  const profileQuery = useAthleteProfileQuery();
+  const units = useMemo<TerrainUnits>(
+    () => ({
+      distanceUnits: profileQuery.data?.distanceUnits ?? 'Kilometers',
+      temperatureUnits: profileQuery.data?.temperatureUnits ?? 'Celsius',
+    }),
+    [profileQuery.data?.distanceUnits, profileQuery.data?.temperatureUnits],
+  );
   const [selectedClimb, setSelectedClimb] = useState<number | null>(null);
   if (!analysis || analysis.profile.length < 3) return null;
 
   return (
     <>
-      <TerrainStrip analysis={analysis} selectedClimb={selectedClimb} />
+      <TerrainStrip analysis={analysis} selectedClimb={selectedClimb} units={units} />
       <ClimbLedger
         climbs={analysis.climbs}
         selectedClimb={selectedClimb}
         onSelect={setSelectedClimb}
+        units={units}
       />
     </>
   );
