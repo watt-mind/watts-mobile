@@ -69,20 +69,25 @@ export async function submitChatToolApproval(params: {
   });
   if (!response.ok) {
     let message = `Tool approval failed (${response.status})`;
+    let body: unknown;
     try {
-      const body = (await response.json()) as { message?: string; statusMessage?: string };
-      message = body.message || body.statusMessage || message;
+      body = (await response.json()) as { message?: string; statusMessage?: string };
+      const parsed = body as { message?: string; statusMessage?: string };
+      message = parsed.message || parsed.statusMessage || message;
     } catch {
       // ignore non-JSON error bodies (SSE)
     }
-    throw new Error(message);
+    // ApiError, not Error: the status is what tells the caller whether the
+    // server refused the approval (nothing executed) or something else went
+    // wrong after the write may already have happened (CW-494a).
+    throw new ApiError(message, response.status, body);
   }
-  // Drain SSE/body so the connection can close cleanly.
-  try {
-    await response.text();
-  } catch {
+  // Drain the SSE body in the background so the connection closes cleanly.
+  // Awaiting it would block until the whole approved tool turn finishes, which
+  // is exactly the latency the approval UI must not sit behind.
+  void Promise.resolve(response.text()).catch(() => {
     // ignore
-  }
+  });
 }
 
 /** Transcribe a voice note for the coach composer (web parity). */

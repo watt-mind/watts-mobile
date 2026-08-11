@@ -24,14 +24,30 @@ export function isTypingList(messages: CoachUIMessage[]): boolean {
  * Worst case this defers content by `FLOOR_MIN_MS + FLOOR_SPREAD_MS`, and only
  * for replies that beat the floor.
  */
-export function useTypingFloor(messages: CoachUIMessage[]): CoachUIMessage[] {
+export function useTypingFloor(
+  messages: CoachUIMessage[],
+  roomKey?: string | null,
+): CoachUIMessage[] {
   const typing = isTypingList(messages);
   const [held, setHeld] = useState<CoachUIMessage[] | null>(null);
   const typingSnapshot = useRef(messages);
   const shownAt = useRef<number | null>(null);
   const floorMs = useRef(0);
+  const roomKeyRef = useRef(roomKey);
 
   useLayoutEffect(() => {
+    // A room switch invalidates the hold outright: the new room arrives as an
+    // empty, non-typing list, which used to re-enter the `remaining > 0` branch
+    // below and re-show the PREVIOUS room's messages for up to 650ms.
+    if (roomKeyRef.current !== roomKey) {
+      roomKeyRef.current = roomKey;
+      typingSnapshot.current = messages;
+      shownAt.current = null;
+      floorMs.current = 0;
+      setHeld(null);
+      return;
+    }
+
     if (typing) {
       typingSnapshot.current = messages;
       if (shownAt.current === null) {
@@ -58,7 +74,7 @@ export function useTypingFloor(messages: CoachUIMessage[]): CoachUIMessage[] {
       setHeld(null);
     }, remaining);
     return () => clearTimeout(timer);
-  }, [typing, messages]);
+  }, [typing, messages, roomKey]);
 
   // While a turn is live the incoming list already ends in the typing bubble, so
   // a hold left over from the previous turn is simply ignored rather than
