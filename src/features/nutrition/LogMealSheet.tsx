@@ -62,7 +62,18 @@ import {
   type NutritionQuickLogForm,
 } from '@/src/features/nutrition/types';
 import { useLogNutritionItem, useTodayNutritionQuery } from '@/src/features/nutrition/useNutrition';
-import { loadPhotoMealSettings } from '@/src/features/nutrition/photoMealSettings';
+import {
+  deviceMediaLibraryPort,
+  mediaLibraryAvailable,
+} from '@/src/features/nutrition/mediaLibraryPort';
+import {
+  resolveSaveToLibraryFeedback,
+  saveMealPhotoToLibrary,
+} from '@/src/features/nutrition/saveMealPhotoToLibrary';
+import {
+  loadPhotoMealSettings,
+  setSavePhotoToLibrary,
+} from '@/src/features/nutrition/photoMealSettings';
 import {
   type PhotoCaptureSettings,
   resolvePhotoCaptureSettings,
@@ -528,6 +539,8 @@ export function LogMealSheet({
   const [historyItems, setHistoryItems] = useState<UserMealHistoryItem[]>([]);
   const [showMacros, setShowMacros] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Non-blocking "Save Photos to Library" outcome — never blocks meal logging. */
+  const [libraryNotice, setLibraryNotice] = useState<string | null>(null);
   const [capturedPhoto, setCapturedPhoto] = useState<CapturedPhoto | null>(null);
   const [estimateConfidence, setEstimateConfidence] = useState<EstimateConfidence | undefined>();
   const [estimateInsight, setEstimateInsight] = useState<string | undefined>();
@@ -633,6 +646,7 @@ export function LogMealSheet({
     setForm(emptyQuickLogForm());
     setShowMacros(false);
     setError(null);
+    setLibraryNotice(null);
     setCapturedPhoto(null);
     setEstimateConfidence(undefined);
     setEstimateInsight(undefined);
@@ -864,19 +878,22 @@ export function LogMealSheet({
       return;
     }
 
-    if (options?.saveCapturedToLibrary && photo.uri) {
-      try {
-        // Optional native dependency — missing binary should not break meal capture.
-        // eslint-disable-next-line @typescript-eslint/no-require-imports -- graceful missing-binary fallback
-        const MediaLibrary = require('expo-media-library');
-        if (MediaLibrary?.requestPermissionsAsync && MediaLibrary?.saveToLibraryAsync) {
-          const perm = await MediaLibrary.requestPermissionsAsync();
-          if (perm.granted) {
-            await MediaLibrary.saveToLibraryAsync(photo.uri);
-          }
-        }
-      } catch {
-        // Silently ignore if MediaLibrary module is missing or permission fails
+    // Saving to the camera roll is a side effect of capture: it may report a
+    // problem, but it must never stop the meal from being analyzed/logged.
+    if (options?.saveCapturedToLibrary) {
+      const outcome = await saveMealPhotoToLibrary(
+        {
+          enabled: true,
+          uri: photo.uri,
+          supported: mediaLibraryAvailable,
+        },
+        deviceMediaLibraryPort,
+      );
+      const feedback = resolveSaveToLibraryFeedback(outcome);
+      setLibraryNotice(feedback.notice);
+      if (feedback.disableSetting) {
+        // The toggle can no longer do what it promises — stop lying about it.
+        void setSavePhotoToLibrary(false);
       }
     }
 
@@ -886,6 +903,7 @@ export function LogMealSheet({
   const handleTakePhoto = async (options?: { saveToLibrary?: boolean }) => {
     hapticLight();
     setError(null);
+    setLibraryNotice(null);
     try {
       const ImagePicker = await import('expo-image-picker');
       const permission = await ImagePicker.requestCameraPermissionsAsync();
@@ -1033,6 +1051,7 @@ export function LogMealSheet({
     setForm(emptyQuickLogForm());
     setShowMacros(false);
     setError(null);
+    setLibraryNotice(null);
     setCapturedPhoto(null);
     setEstimateConfidence(undefined);
     setEstimateInsight(undefined);
@@ -1198,6 +1217,9 @@ export function LogMealSheet({
 
             <MacroFields form={form} themeMuted={theme.textMuted} update={update} />
 
+            {libraryNotice ? (
+              <Text className="mb-3 text-xs text-modify">{libraryNotice}</Text>
+            ) : null}
             {error ? <Text className="mb-3 text-xs text-danger">{error}</Text> : null}
 
             <Button
@@ -1239,6 +1261,9 @@ export function LogMealSheet({
               <Text className="mt-2 max-w-sm text-center text-sm leading-5 text-text-muted">
                 Coach will estimate the meal, then you can review every value before saving.
               </Text>
+              {libraryNotice ? (
+                <Text className="mt-4 text-center text-sm text-modify">{libraryNotice}</Text>
+              ) : null}
               {error ? <Text className="mt-4 text-center text-sm text-danger">{error}</Text> : null}
               <View className="mt-6 w-full">
                 <Button
@@ -1585,6 +1610,9 @@ export function LogMealSheet({
                     <MacroFields form={form} themeMuted={theme.textMuted} update={update} />
                   ) : null}
 
+                  {libraryNotice ? (
+                    <Text className="mb-3 text-xs text-modify">{libraryNotice}</Text>
+                  ) : null}
                   {error ? <Text className="mb-3 text-xs text-danger">{error}</Text> : null}
                 </>
               )}
