@@ -1,4 +1,3 @@
-import { QueryClient } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import * as Linking from 'expo-linking';
 import {
@@ -31,6 +30,7 @@ import {
   validateInstanceReachability,
 } from '@/src/config/instance';
 import { wireQueryConnectivity } from '@/src/query/connectivity';
+import { createAppQueryClient } from '@/src/query/queryClient';
 import {
   clearPersistedQueryCache,
   queryPersister,
@@ -74,17 +74,7 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      retry: 1,
-      staleTime: 30_000,
-      refetchOnReconnect: true,
-      // Keep cached field reads readable offline between launches.
-      gcTime: 1000 * 60 * 60 * 24 * 7,
-    },
-  },
-});
+const queryClient = createAppQueryClient();
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>('loading');
