@@ -473,7 +473,7 @@ export default function RecoveryEventScreen() {
                   disabled={pending}
                 >
                   {deleteMutation.isPending ? (
-                    <ActivityIndicator color="#f87171" />
+                    <ActivityIndicator color={theme.dangerOnSurface} />
                   ) : (
                     <Text className="text-base font-semibold text-danger">Delete</Text>
                   )}

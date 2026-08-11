@@ -107,6 +107,27 @@ Wiring: `--color-*-on-surface` in `global.css`, `textColor.*` in `tailwind.confi
 
 `src/theme/__tests__/brandContrast.test.ts` asserts every token clears AA on both themes, that error/success text clears its tinted card, that fills stay invariant, and that `global.css` / `tailwind.config.js` / `colors.ts` agree.
 
+### Guardrail: `pnpm lint:theme`
+
+`scripts/check-theme-tokens.mjs` walks every `.js/.jsx/.ts/.tsx` under `app/` and `src/` (skipping `src/theme/`, which owns the palette) and enforces two rules:
+
+1. **Utility classes** — the dark-only classes superseded by tokens: `zinc-*`, `text-white`, `bg-surface-dark`, `text-ink-muted`.
+2. **Hex literals** — **any** 3-, 4-, 6-, or 8-digit hex colour, not an enumerated list. Until CW-348 this rule named only four dark neutrals (`#09090b`, `#27272a`, `#18181b`, `#3f3f46`), so every accent hex slipped through and shipped light-mode text between 1.74:1 and 3.79:1 — the exact failure the `*OnSurface` tokens exist to prevent. The check reported "ok" the whole time.
+
+Comments are not scanned, since docs legitimately quote hex while explaining a token. Only *whole-line* `//`, `/* … */`, and JSX `{/* … */}` comments are skipped — a trailing `//` is never stripped, so `color: '#22c55e', // brand` is still caught.
+
+**Allowlist.** Genuine exceptions live in an explicit `allowlist` map in the script, keyed by file **and pinned to the exact literals that file may use** — an allowlisted file is not a blanket exemption, so an accent hex added to one still fails. Every entry carries a `reason`. Add to it only when no token can apply:
+
+| File | Literals | Why |
+|---|---|---|
+| `app/+html.tsx` | `#fff` `#000` | Static `<head>` CSS for the web build, emitted as a string before React mounts — no theme context exists, and it drives `prefers-color-scheme` itself. |
+| `app/(app)/invite.tsx` | `#000000` `#ffffff` | QR modules must stay pure black on pure white to hold the contrast scanners require. |
+| `src/features/auth/AuthAtmosphere.tsx` | `#fafafa` `#ffffff` | Compared *against* `theme.surface` to detect the light palette — a value read from the theme, never rendered. |
+| `src/features/log/WellnessScoreCard.tsx` | `#000000` | Ink over the active brand fill. `bg-brand` is theme-invariant, so its ink must be too (21:1); a per-theme token would invert it. |
+| `src/features/nutrition/BarcodeScannerModal.tsx` | `#ffffff` | Chrome over the live camera viewfinder — no theme surface behind the preview. |
+
+The recurring shape of a legitimate exception is **ink on a theme-invariant fill** or **a colour that is never rendered**. If neither applies, use a token. Where the invariant fill is expressed in code rather than the allowlist — `CoachChat`'s dictation button paints `bg-red-500` while recording — read the invariant value off the static `Colors` map with a comment saying why, rather than inlining a literal.
+
 ## Type scale
 
 - Screen title / greeting: `text-2xl font-semibold text-text-primary`
@@ -195,7 +216,7 @@ To avoid keyboards layout overlap or blocking inputs:
 
 ## Don'ts
 
-- No raw neutral palette values in components (`bg-zinc-900`, `#09090b`, `text-white`) — semantic tokens only, so both themes stay correct. **Exception:** QR code modules may use pure `#000000` / `#ffffff` for scanner reliability; wrap the pad in semantic `bg-card` chrome.
+- No raw hex in components — not just neutrals (`bg-zinc-900`, `#09090b`, `text-white`) but accents too (`#22c55e`, `#f87171`). Semantic tokens only, so both themes stay correct; `pnpm lint:theme` fails on any hex literal. **Exceptions** are the allowlist in `scripts/check-theme-tokens.mjs` (see [Guardrail](#guardrail-pnpm-linttheme)) — e.g. QR modules may use pure `#000000` / `#ffffff` for scanner reliability; wrap the pad in semantic `bg-card` chrome.
 - No white text on brand green.
 - No new one-off button styles — extend `Button` with a variant instead.
 - No full-screen `ActivityIndicator` for initial loads.

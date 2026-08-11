@@ -19,11 +19,13 @@ import {
 import { useTodayQuery } from '@/src/features/today/useToday';
 import { useKeyboardOverlap } from '@/src/hooks/useKeyboardOverlap';
 import { hapticLight, hapticError, hapticSuccess } from '@/src/lib/haptics';
+import { useThemeColors } from '@/src/theme/useThemeColors';
 
 const POLL_MS = 2500;
 const MAX_POLL_ATTEMPTS = 30; // ~75s
 
 export default function DailyCheckinScreen() {
+  const theme = useThemeColors();
   const { instanceUrl } = useAuth();
   const todayQuery = useTodayQuery();
   const { data: checkin, isLoading, isError, error, refetch } = useDailyCheckinQuery();
@@ -294,7 +296,7 @@ export default function DailyCheckinScreen() {
             testID="daily-checkin-notes"
             className="min-h-[80px] w-full rounded-lg border border-border bg-card/40 px-3 py-2 text-base text-text-primary"
             placeholder="Add context about how you feel, soreness, stress..."
-            placeholderTextColor="#71717a"
+            placeholderTextColor={theme.textMuted}
             multiline
             numberOfLines={3}
             textAlignVertical="top"
