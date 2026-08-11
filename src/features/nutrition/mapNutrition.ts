@@ -1,3 +1,5 @@
+import { parseDecimal } from '@/src/lib/parseDecimal';
+
 import type {
   ApiMealType,
   FuelingPlanAnalysis,
@@ -315,11 +317,25 @@ export function pickTodayNutrition(payload: unknown, today = localDateYmd()): Nu
   return empty;
 }
 
+/**
+ * Parse an optional quick-log numeric field. Comma decimals are accepted
+ * (CW-484) — `Number("27,5")` was NaN, so the item logged with calories but no
+ * carbs/protein/fat.
+ */
 function parseOptionalNumber(value: string): number | undefined {
-  const trimmed = value.trim();
-  if (!trimmed) return undefined;
-  const n = Number(trimmed);
-  return Number.isFinite(n) ? n : undefined;
+  const n = parseDecimal(value);
+  return n == null ? undefined : n;
+}
+
+/**
+ * Quick-log fields that were filled in but cannot be parsed. Callers should block
+ * the save and surface these rather than posting an item with missing macros.
+ */
+export function quickLogInvalidFields(
+  form: NutritionQuickLogForm,
+): ('calories' | 'protein' | 'carbs' | 'fat')[] {
+  const keys = ['calories', 'protein', 'carbs', 'fat'] as const;
+  return keys.filter((key) => form[key].trim() && parseOptionalNumber(form[key]) === undefined);
 }
 
 export function emptyQuickLogForm(meal: MealSlot = 'SNACK'): NutritionQuickLogForm {

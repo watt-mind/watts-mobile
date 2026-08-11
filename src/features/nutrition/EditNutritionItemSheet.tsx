@@ -9,6 +9,7 @@ import { Button } from '@/src/components/Button';
 import { hapticError, hapticLight, hapticSuccess } from '@/src/lib/haptics';
 import { useThemeColors } from '@/src/theme/useThemeColors';
 
+import { parseEditNutritionItemForm } from './editNutritionItemForm';
 import { apiMealTypeToMealSlot, mealSlotToApiMealType } from './mapNutrition';
 import type { ApiMealType, MealSlot, NutritionLoggedItem } from './types';
 import { MEAL_OPTIONS } from './types';
@@ -79,19 +80,13 @@ function EditForm({
 
   const onSave = async () => {
     if (!item.id) return;
-    const trimmed = name.trim();
-    if (!trimmed) {
-      setError('Enter a name for this item.');
+    const parsed = parseEditNutritionItemForm({ name, calories, protein, carbs, fat });
+    if (!parsed.ok) {
+      hapticError();
+      setError(parsed.error);
       return;
     }
-    const cal = Math.round(Number(calories) || 0);
-    const pro = Number(protein) || 0;
-    const carb = Number(carbs) || 0;
-    const f = Number(fat) || 0;
-    if (cal < 0 || pro < 0 || carb < 0 || f < 0) {
-      setError('Calories and macros cannot be negative.');
-      return;
-    }
+    const { name: trimmed, calories: cal, protein: pro, carbs: carb, fat: f } = parsed.value;
     const mealType: ApiMealType = mealSlotToApiMealType(meal);
 
     setError(null);
