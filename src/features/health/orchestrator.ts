@@ -2,6 +2,7 @@ import { onlineManager } from '@tanstack/react-query';
 import { Platform } from 'react-native';
 
 import { loadTokens } from '@/src/auth/tokenStorage';
+import { createKeyedSingleFlight } from '@/src/lib/keyedSingleFlight';
 
 import { fetchRemoteWorkoutsForMatch } from './fetchRemoteWorkouts';
 import {
@@ -56,6 +57,25 @@ function trackManualSync<T>(op: Promise<T>): Promise<T> {
   manualSyncInFlight.add(tracked);
   return tracked;
 }
+
+/**
+ * Per-ledger-item lock (CW-343).
+ *
+ * `inFlight` above only single-flights a whole pass, and the manual entry points
+ * deliberately run outside it. Syncing one item is a read-modify-write over its
+ * ledger row — getLedgerItem → decide → beginLedgerAttempt → saveLedgerItem →
+ * upload — so two overlapping callers targeting the same id both read the same
+ * stale snapshot, both clear the converged/pending/backoff guards, and both
+ * upload. Live trigger: tapping Retry exactly as the foreground poll or the
+ * hourly background task picks up the same session.
+ *
+ * The gate has to be keyed on the ledger id, not global: keying it globally
+ * would queue an unrelated retry behind a full pass. Every read-modify-write on
+ * a single item now runs inside this lock, so a second caller for the same id
+ * joins the running attempt (and gets its result) instead of issuing its own
+ * upload, while different ids keep running in parallel.
+ */
+const ledgerItemLock = createKeyedSingleFlight();
 
 /**
  * Monotonic generation bumped when sign-out begins (see clearHealthSyncOnSignOut).
@@ -161,15 +181,30 @@ function currentPlatform(): HealthPlatform | null {
   return null;
 }
 
+type WellnessSyncStatus = 'synced' | 'failed' | 'skipped' | 'cancelled';
+
+/**
+ * Sync one wellness day. Serialised per ledger id — an overlapping caller for
+ * the same day joins this attempt rather than starting a second upload.
+ */
 async function syncWellnessSample(
   sample: DailyWellnessSample,
   force = false,
   generation?: number,
-): Promise<'synced' | 'failed' | 'skipped' | 'cancelled'> {
+): Promise<WellnessSyncStatus> {
   if (!sampleHasMetrics(sample)) return 'skipped';
   if (generation !== undefined && !isHealthSyncGenerationCurrent(generation)) return 'cancelled';
 
   const id = wellnessLedgerId(sample.date);
+  return ledgerItemLock(id, () => syncWellnessSampleLocked(id, sample, force, generation));
+}
+
+async function syncWellnessSampleLocked(
+  id: string,
+  sample: DailyWellnessSample,
+  force: boolean,
+  generation: number | undefined,
+): Promise<WellnessSyncStatus> {
   const existing = await getLedgerItem(id);
   const fingerprint = wellnessContentFingerprint(sample);
 
@@ -217,15 +252,34 @@ async function syncWellnessSample(
   }
 }
 
+type WorkoutSyncStatus = 'synced' | 'pending' | 'abandoned' | 'failed' | 'skipped' | 'cancelled';
+
+/**
+ * Sync one platform workout. Serialised per ledger id — an overlapping caller
+ * for the same session joins this attempt rather than issuing a second upload
+ * (CW-343); different sessions are unaffected and still run in parallel.
+ */
 async function syncWorkoutSession(
   session: PlatformWorkoutSession,
   remotes: Awaited<ReturnType<typeof fetchRemoteWorkoutsForMatch>>,
   force = false,
   generation?: number,
-): Promise<'synced' | 'pending' | 'abandoned' | 'failed' | 'skipped' | 'cancelled'> {
+): Promise<WorkoutSyncStatus> {
   if (generation !== undefined && !isHealthSyncGenerationCurrent(generation)) return 'cancelled';
 
   const id = workoutLedgerId(session.platformSessionId);
+  return ledgerItemLock(id, () =>
+    syncWorkoutSessionLocked(id, session, remotes, force, generation),
+  );
+}
+
+async function syncWorkoutSessionLocked(
+  id: string,
+  session: PlatformWorkoutSession,
+  remotes: Awaited<ReturnType<typeof fetchRemoteWorkoutsForMatch>>,
+  force: boolean,
+  generation: number | undefined,
+): Promise<WorkoutSyncStatus> {
   const existing = await getLedgerItem(id);
 
   // Already uploaded/matched — converge without re-upload unless forced.
