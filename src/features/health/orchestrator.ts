@@ -659,6 +659,29 @@ export async function syncUnsyncedWorkouts(): Promise<SyncUnsyncedWorkoutsResult
   return trackManualSync(syncUnsyncedWorkoutsImpl());
 }
 
+const UNREADABLE_WORKOUT_ERROR = 'Workout is no longer readable on this device';
+
+/** Write the reason a listed workout could not be re-read onto its ledger row. */
+async function recordUnreadableWorkout(
+  row: { platformSessionId: string; platform: HealthPlatform; title: string; startedAt: string },
+  generation: number,
+): Promise<void> {
+  if (!isHealthSyncGenerationCurrent(generation)) return;
+  const id = workoutLedgerId(row.platformSessionId);
+  const existing = await getLedgerItem(id);
+  const item =
+    existing ??
+    seedNeedsSync('workout', {
+      id,
+      kind: 'workout',
+      platform: row.platform,
+      title: row.title,
+      startedAt: row.startedAt,
+    });
+  if (!isHealthSyncGenerationCurrent(generation)) return;
+  await saveLedgerItem(completeLedgerFailure(item, UNREADABLE_WORKOUT_ERROR));
+}
+
 async function syncUnsyncedWorkoutsImpl(): Promise<SyncUnsyncedWorkoutsResult> {
   const generation = getHealthSyncGeneration();
 
@@ -684,6 +707,10 @@ async function syncUnsyncedWorkoutsImpl(): Promise<SyncUnsyncedWorkoutsResult> {
     result.attempted += 1;
     if (!session) {
       result.failed += 1;
+      // Record *why* on the row itself — otherwise "Sync all" reports that some
+      // workouts could not be synced while every row still reads needs_sync
+      // with no explanation (CW-465).
+      await recordUnreadableWorkout(row, generation);
       continue;
     }
     const status = await syncWorkoutSession(session, remotes, true, generation);

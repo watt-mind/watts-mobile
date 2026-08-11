@@ -1,3 +1,4 @@
+/* eslint-disable import/first -- vi.mock factories must be declared before the modules under test are imported. */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('react-native', () => ({ Platform: { OS: 'ios' } }));
