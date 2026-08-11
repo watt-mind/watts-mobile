@@ -122,31 +122,16 @@ async function drainHealthConnectChanges(): Promise<boolean> {
     if (status !== 3) return false;
     await HC.initialize();
 
+    // Ask only for types we actually hold a read grant on — see
+    // grantedHealthConnectChangeRecordTypes (CW-479).
+    const { grantedHealthConnectChangeRecordTypes } = await import('./syncPermissions');
+    const recordTypes = grantedHealthConnectChangeRecordTypes(await HC.getGrantedPermissions());
+    if (recordTypes.length === 0) return false;
+
     const token = await AsyncStorage.getItem(HC_CHANGES_TOKEN_KEY);
     const result = await HC.getChanges({
       ...(token ? { changesToken: token } : {}),
-      recordTypes: [
-        'SleepSession',
-        'Steps',
-        'Distance',
-        'HeartRate',
-        'RestingHeartRate',
-        'HeartRateVariabilityRmssd',
-        'ExerciseSession',
-        'Weight',
-        'BodyFat',
-        'OxygenSaturation',
-        'RespiratoryRate',
-        'Vo2Max',
-        'ActiveCaloriesBurned',
-        'TotalCaloriesBurned',
-        'BasalMetabolicRate',
-        'FloorsClimbed',
-        'Power',
-        'Speed',
-        'CyclingPedalingCadence',
-        'StepsCadence',
-      ],
+      recordTypes,
     });
     if (result.nextChangesToken) {
       await AsyncStorage.setItem(HC_CHANGES_TOKEN_KEY, result.nextChangesToken);

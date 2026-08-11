@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  grantedHealthConnectChangeRecordTypes,
   hasRequiredHealthConnectPermissions,
+  HEALTH_CONNECT_CHANGE_RECORD_TYPES,
   HEALTH_CONNECT_SYNC_PERMISSIONS,
 } from '../syncPermissions';
 
@@ -26,6 +28,45 @@ describe('hasRequiredHealthConnectPermissions', () => {
       (permission) => permission.recordType !== 'BackgroundAccessPermission',
     );
     expect(hasRequiredHealthConnectPermissions(withoutBackground)).toBe(true);
+  });
+});
+
+// CW-479: getChanges throws for the whole request if any requested type is not
+// granted, so the list must be intersected with the real grants first.
+describe('grantedHealthConnectChangeRecordTypes', () => {
+  const allGranted = HEALTH_CONNECT_SYNC_PERMISSIONS.map((permission) => ({ ...permission }));
+
+  it('returns the full record set when everything is granted', () => {
+    expect(grantedHealthConnectChangeRecordTypes(allGranted)).toEqual([
+      ...HEALTH_CONNECT_CHANGE_RECORD_TYPES,
+    ]);
+  });
+
+  it('never includes the pseudo BackgroundAccessPermission entry', () => {
+    expect(HEALTH_CONNECT_CHANGE_RECORD_TYPES).not.toContain('BackgroundAccessPermission');
+    expect(grantedHealthConnectChangeRecordTypes(allGranted)).not.toContain(
+      'BackgroundAccessPermission',
+    );
+  });
+
+  it('drops a revoked type and keeps the rest', () => {
+    const withoutSleep = allGranted.filter(
+      (permission) => permission.recordType !== 'SleepSession',
+    );
+    const result = grantedHealthConnectChangeRecordTypes(withoutSleep);
+    expect(result).not.toContain('SleepSession');
+    expect(result).toContain('Steps');
+    expect(result.length).toBe(HEALTH_CONNECT_CHANGE_RECORD_TYPES.length - 1);
+  });
+
+  it('ignores write grants — only reads carry change notifications', () => {
+    expect(
+      grantedHealthConnectChangeRecordTypes([{ accessType: 'write', recordType: 'Steps' }]),
+    ).toEqual([]);
+  });
+
+  it('returns nothing when all permissions are revoked', () => {
+    expect(grantedHealthConnectChangeRecordTypes([])).toEqual([]);
   });
 });
 

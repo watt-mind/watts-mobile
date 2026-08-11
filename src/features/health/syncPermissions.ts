@@ -12,7 +12,11 @@ import type {
 // to a permission, which is what makes an unmappable entry (notably a *read* on
 // ExerciseRoute) a compile error instead of a runtime InvalidRecordType that
 // aborts the whole permission request.
-import type { BackgroundAccessPermission, Permission } from 'react-native-health-connect';
+import type {
+  BackgroundAccessPermission,
+  Permission,
+  RecordType,
+} from 'react-native-health-connect';
 
 /** HealthKit types for wellness + workout sync (read-only). */
 export const HEALTHKIT_SYNC_READ_TYPES = [
@@ -112,6 +116,31 @@ export const HEALTH_CONNECT_SYNC_PERMISSIONS = [
 const OPTIONAL_HEALTH_CONNECT_RECORD_TYPES: readonly string[] = ['BackgroundAccessPermission'];
 
 type HealthConnectPermissionLike = { accessType?: string; recordType?: string };
+
+/** Real record types in the read set — everything except the pseudo permission entries. */
+export const HEALTH_CONNECT_CHANGE_RECORD_TYPES: readonly RecordType[] =
+  HEALTH_CONNECT_SYNC_PERMISSIONS.filter(
+    (permission) =>
+      permission.accessType === 'read' &&
+      !OPTIONAL_HEALTH_CONNECT_RECORD_TYPES.includes(permission.recordType),
+  ).map((permission) => permission.recordType as RecordType);
+
+/**
+ * Narrow the change-notification record types to those actually granted.
+ *
+ * `getChanges` is all-or-nothing: it throws for the whole request if any single
+ * requested type is not granted (CW-479). The athlete can revoke an individual
+ * type from the Health Connect settings screen at any time, so asking for the
+ * full set unconditionally means one revocation kills change-driven sync
+ * entirely — and, via the 15-minute foreground poll, re-reports the failure
+ * every 15 minutes. Intersecting first degrades to "fewer change triggers".
+ */
+export function grantedHealthConnectChangeRecordTypes(
+  granted: readonly HealthConnectPermissionLike[],
+): RecordType[] {
+  const readable = new Set(granted.filter((p) => p.accessType === 'read').map((p) => p.recordType));
+  return HEALTH_CONNECT_CHANGE_RECORD_TYPES.filter((recordType) => readable.has(recordType));
+}
 
 /** Background access is best-effort; the remaining record reads are required. */
 export function hasRequiredHealthConnectPermissions(
