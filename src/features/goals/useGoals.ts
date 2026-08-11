@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { createGoal, fetchGoals } from './api';
-import type { CreateGoalInput, GoalApi } from './types';
+import { GOALS_LIST_KEY, seedCreatedGoal } from './goalCache';
+import type { CreateGoalInput } from './types';
 import {
   mapGoalDetail,
   mapGoalGlance,
@@ -10,23 +11,13 @@ import {
   sortGoalsForList,
 } from './mapGoals';
 
-export const GOALS_LIST_KEY = ['goals', 'list'] as const;
+export { GOALS_LIST_KEY } from './goalCache';
 
 export function useCreateGoalMutation() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: CreateGoalInput) => createGoal(input),
-    onSuccess: async (created) => {
-      // Seed cache before navigate so goal detail does not flash "not found".
-      queryClient.setQueryData<GoalApi[]>(GOALS_LIST_KEY, (prev) => {
-        if (!Array.isArray(prev)) return [created];
-        if (prev.some((g) => g.id === created.id)) {
-          return prev.map((g) => (g.id === created.id ? { ...g, ...created } : g));
-        }
-        return [created, ...prev];
-      });
-      await queryClient.invalidateQueries({ queryKey: GOALS_LIST_KEY });
-    },
+    onSuccess: (created) => seedCreatedGoal(queryClient, created),
   });
 }
 

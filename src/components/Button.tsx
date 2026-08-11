@@ -53,20 +53,25 @@ export function Button({
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={{ disabled: blocked, busy: loading }}
-      className={`items-center rounded-xl py-3.5 ${containerByVariant[variant]} ${
-        disabled && !loading ? 'opacity-50' : ''
-      } ${className}`}
+      className={`flex-row items-center justify-center gap-2 rounded-xl py-3.5 ${
+        containerByVariant[variant]
+      } ${disabled && !loading ? 'opacity-50' : ''} ${loading ? 'opacity-80' : ''} ${className}`}
       onPress={() => {
         if (haptic) hapticLight();
         onPress();
       }}
       disabled={blocked}
     >
-      {loading ? (
-        <ActivityIndicator color={spinnerByVariant[variant]} />
-      ) : (
-        <Text className={`text-base font-semibold ${labelByVariant[variant]}`}>{label}</Text>
-      )}
+      {/* Keep the label while busy: a spinner-only button reads as "the button
+          disappeared" when work stalls, which is how an onboarding step became
+          an unlabelled pill with no way forward. */}
+      {loading ? <ActivityIndicator size="small" color={spinnerByVariant[variant]} /> : null}
+      <Text
+        className={`shrink text-base font-semibold ${labelByVariant[variant]}`}
+        numberOfLines={1}
+      >
+        {label}
+      </Text>
     </AnimatedPressable>
   );
 }

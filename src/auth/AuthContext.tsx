@@ -1,4 +1,3 @@
-import { QueryClient } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import * as Linking from 'expo-linking';
 import {
@@ -31,6 +30,7 @@ import {
   validateInstanceReachability,
 } from '@/src/config/instance';
 import { wireQueryConnectivity } from '@/src/query/connectivity';
+import { createAppQueryClient } from '@/src/query/queryClient';
 import {
   clearPersistedQueryCache,
   queryPersister,
@@ -45,6 +45,16 @@ async function clearHealthSyncForIdentityTransition(): Promise<void> {
     await clearHealthSyncOnSignOut();
   } catch (error) {
     console.warn('Failed to clear health sync state during account transition', error);
+  }
+}
+
+async function clearPushRegistrationForIdentityTransition(): Promise<void> {
+  try {
+    const { clearPushRegistrationOnSignOut } =
+      await import('@/src/features/notifications/pushRegistration');
+    await clearPushRegistrationOnSignOut();
+  } catch (error) {
+    console.warn('Failed to clear push registration during account transition', error);
   }
 }
 
@@ -74,17 +84,7 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      retry: 1,
-      staleTime: 30_000,
-      refetchOnReconnect: true,
-      // Keep cached field reads readable offline between launches.
-      gcTime: 1000 * 60 * 60 * 24 * 7,
-    },
-  },
-});
+const queryClient = createAppQueryClient();
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>('loading');
@@ -228,6 +228,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setStatus((current) => (current === 'needs_instance' ? current : 'needs_login'));
       queryClient.clear();
       void clearPersistedQueryCache();
+      // A server-revoked refresh token signs the athlete out just as definitively
+      // as tapping Sign out: the device must stop receiving that account's push
+      // notifications, and the local token must be cleared so the pending
+      // unregister retry can recover.
+      void clearPushRegistrationForIdentityTransition();
       void clearHealthSyncForIdentityTransition();
       void clearPendingWellnessCheckinForIdentityTransition();
       void import('@/src/features/activation/connectLater')
@@ -295,13 +300,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = useCallback(async () => {
     const generation = bumpAuthSessionGeneration();
-    try {
-      const { clearPushRegistrationOnSignOut } =
-        await import('@/src/features/notifications/pushRegistration');
-      await clearPushRegistrationOnSignOut();
-    } catch (error) {
-      console.warn('Failed to clear push registration on sign-out', error);
-    }
+    await clearPushRegistrationForIdentityTransition();
     await clearHealthSyncForIdentityTransition();
     await clearPendingWellnessCheckinForIdentityTransition();
     try {
