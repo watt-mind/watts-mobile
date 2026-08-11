@@ -313,3 +313,29 @@ export const STARTING_PHASE_OPTIONS: {
 ];
 
 export const VOLUME_HOUR_CHIPS = [4, 5, 6, 8, 10, 12, 14, 16] as const;
+
+/** Upper bound the first-week preview poller waits before giving up (see api.ts). */
+export const PLAN_GENERATE_TIMEOUT_MS = 180_000;
+
+/**
+ * Progress copy for the plan "working" phase. Generation can legitimately take
+ * minutes, so the panel must show that time is passing rather than a frozen
+ * line of text.
+ */
+export function formatGenerateProgress(
+  elapsedMs: number,
+  timeoutMs: number = PLAN_GENERATE_TIMEOUT_MS,
+): { elapsedLabel: string; hint: string } {
+  const elapsedSeconds = Math.max(0, Math.floor(elapsedMs / 1000));
+  const minutes = Math.floor(elapsedSeconds / 60);
+  const seconds = elapsedSeconds % 60;
+  const elapsedLabel = `${minutes}:${String(seconds).padStart(2, '0')}`;
+  const remainingMs = Math.max(0, timeoutMs - elapsedMs);
+  const hint =
+    remainingMs === 0
+      ? 'This is taking longer than expected — you can cancel and try again.'
+      : elapsedMs >= 30_000
+        ? 'Still working. Building a season can take a couple of minutes.'
+        : 'This usually takes under a minute.';
+  return { elapsedLabel, hint };
+}
