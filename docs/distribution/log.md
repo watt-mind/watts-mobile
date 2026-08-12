@@ -25,8 +25,16 @@ Format:
 - **0.1.1 (4) remains in App Review** — uploading build 5 does not alter that submission; the attached build only changes if it is attached in ASC.
 - ASC processing completed; build 5 reached internal group **WM** automatically.
 - **Distributed to external group ALPHA** (2 testers) by adding the group on the build's Test Information tab, with "What to Test" notes covering the CW-571 badge change and the CW-573 sync controls, and *Automatically notify testers* left on. Beta App Review passed immediately (0.1.1 had already cleared it on an earlier build) — build 5 went straight to **Testing** with groups **WM + AL**.
-- **Deliberately did not swap the build attached to App Review.** 0.1.1 is **Waiting for Review** with build **4**; ASC only allows changing the build by removing the version from review, which forfeits the queue position held since 2026-08-09. Tester access is controlled by TestFlight groups, not by the attached build, so the swap would have cost the slot and helped no tester. Verified afterwards that the version still reads *0.1.1 Waiting for Review*.
-- Next: watch for App Review outcome on build 4; if it is rejected or withdrawn for another reason, attach build 5 at that point rather than pre-emptively.
+- **App Review build swapped 4 → 5** (see below). Initially left on 4, on the reasoning that tester access comes from TestFlight groups rather than the attached build — correct for testers, but it left the *public* release as build 4, still carrying the CW-571 and CW-573 bugs. Swapped once that was called out.
+
+## 2026-08-12 — App Review build swapped to 0.1.1 (5) (009, CW-576)
+
+- **Why:** the attached build is what ships to the App Store. Leaving 0.1.1 (4) attached would have released the false "Connected" Health badge and the inert Recent workouts sync controls to the public, then required an immediate 0.1.2 fast-follow.
+- **Cost accepted:** ASC only permits changing the build by *removing the version from review*, forfeiting the queue position held since 2026-08-09. Apple had **not** started reviewing in those 3 days, so the forfeited position had not yet paid off.
+- Sequence: **remove this version from review** → status **Developer Rejected** → detached build 4 → **Add Build** → selected **5** → **Save** → status **Prepare for Submission** → **Add for Review** → **Submit for Review**.
+- Metadata survived the removal intact: **9 of 10** iPhone 6.5" screenshots, promotional text, and description all still present (verified before resubmitting).
+- Result: **1 Item Submitted**, status **Waiting for Review** with build **5**, up to 48 hours.
+- Note for next time: swap the build *before* concluding a distribution step. The build attached at submission is the binary the public gets — TestFlight group membership is a separate axis and does not affect it.
 
 ## 2026-08-09 — Play production submitted for review (017)
 
