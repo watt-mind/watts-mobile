@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs';
 
 import type { ConfigContext, ExpoConfig } from 'expo/config';
 
+import { assertNoE2ePublicVariablesInReleaseBuild } from './src/config/e2eBuildGuard';
+
 /**
  * Dynamic Expo config. Static chrome lives in `app.json`; env/EAS injects
  * release observability without committing secrets.
@@ -47,7 +49,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     process.env.EXPO_PUBLIC_SENTRY_ENVIRONMENT ??
     (process.env.EAS_BUILD === 'true' ? 'production' : 'development');
 
-  assertE2eAuthNotProduction(sentryEnvironment);
+  assertNoE2ePublicVariablesInReleaseBuild(process.env);
 
   const googleMapsApiKey =
     process.env.GOOGLE_MAPS_API_KEY?.trim() ||
@@ -91,6 +93,12 @@ export default ({ config }: ConfigContext): ExpoConfig => {
   } as ExpoConfig;
 };
 
+function isTruthyEnv(value: string | undefined): boolean {
+  if (!value) return false;
+  const normalized = value.trim().toLowerCase();
+  return normalized === '1' || normalized === 'true' || normalized === 'yes';
+}
+
 function readPackageVersion(): string | undefined {
   try {
     const pkg = JSON.parse(readFileSync('./package.json', 'utf8')) as { version?: string };
@@ -99,36 +107,6 @@ function readPackageVersion(): string | undefined {
   } catch {
     return undefined;
   }
-}
-
-/**
- * Build-time backstop for the E2E auth bypass (CW-354).
- *
- * `EXPO_PUBLIC_E2E_AUTH` on a production profile would ship a live auth bypass and
- * bundle-embedded fixture tokens to real users. The runtime resolver
- * (`src/config/e2eGuard.ts`) already refuses to honour that combination, but it does
- * so silently-ish, after the binary is built. Throwing here fails config resolution —
- * so `expo prebuild` / `eas build` stops before a misconfigured store build exists.
- *
- * Only `production` throws: `preview` is caught by the runtime resolver, and failing
- * the build on it would be a behaviour change beyond the store-safety goal.
- */
-function assertE2eAuthNotProduction(sentryEnvironment: string): void {
-  if (!isTruthyEnv(process.env.EXPO_PUBLIC_E2E_AUTH)) return;
-  if (sentryEnvironment.trim().toLowerCase() !== 'production') return;
-
-  throw new Error(
-    'Refusing to resolve app config: EXPO_PUBLIC_E2E_AUTH is set while ' +
-      'EXPO_PUBLIC_SENTRY_ENVIRONMENT resolves to "production". That combination would ship ' +
-      'the E2E auth bypass and its fixture tokens in a store build. Unset EXPO_PUBLIC_E2E_* ' +
-      'for production builds, or use the dedicated "e2e" EAS profile.',
-  );
-}
-
-function isTruthyEnv(value: string | undefined): boolean {
-  if (!value) return false;
-  const normalized = value.trim().toLowerCase();
-  return normalized === '1' || normalized === 'true' || normalized === 'yes';
 }
 
 function pluginName(entry: NonNullable<ExpoConfig['plugins']>[number]): string | null {
