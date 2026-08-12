@@ -1,0 +1,2 @@
+# Ignore actual compliance PDF documents to keep sensitive banking data out of git
+*.pdf
