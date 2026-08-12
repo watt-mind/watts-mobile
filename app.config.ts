@@ -43,6 +43,12 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     plugins.push('./plugins/withIosFreeTeamStrip');
   }
 
+  const sentryEnvironment =
+    process.env.EXPO_PUBLIC_SENTRY_ENVIRONMENT ??
+    (process.env.EAS_BUILD === 'true' ? 'production' : 'development');
+
+  assertNoE2ePublicVariablesInReleaseBuild(process.env);
+
   const googleMapsApiKey =
     process.env.GOOGLE_MAPS_API_KEY?.trim() ||
     process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY?.trim() ||
@@ -75,9 +81,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       ...extra,
       iosFreeTeam,
       sentryDsn: process.env.EXPO_PUBLIC_SENTRY_DSN ?? extra.sentryDsn ?? '',
-      sentryEnvironment:
-        process.env.EXPO_PUBLIC_SENTRY_ENVIRONMENT ??
-        (process.env.EAS_BUILD === 'true' ? 'production' : 'development'),
+      sentryEnvironment,
       sentryRelease:
         process.env.EXPO_PUBLIC_SENTRY_RELEASE ?? process.env.EAS_BUILD_ID ?? undefined,
       sentryDist: process.env.EXPO_PUBLIC_SENTRY_DIST ?? process.env.EAS_BUILD_NUMBER ?? undefined,
@@ -87,6 +91,47 @@ export default ({ config }: ConfigContext): ExpoConfig => {
   } as ExpoConfig;
 };
 
+/**
+ * Expo evaluates `app.config.ts` outside Metro, so its store-build E2E guard
+ * must remain self-contained rather than import a TypeScript source module.
+ */
+function assertNoE2ePublicVariablesInReleaseBuild(environment: NodeJS.ProcessEnv): void {
+  const sentryEnvironment = environment.EXPO_PUBLIC_SENTRY_ENVIRONMENT?.trim().toLowerCase();
+  const isReleaseBuild =
+    environment.EAS_BUILD === 'true' ||
+    environment.NODE_ENV?.trim().toLowerCase() === 'production' ||
+    sentryEnvironment === 'production';
+
+  if (!isReleaseBuild) return;
+
+  const e2eVariables = [
+    'EXPO_PUBLIC_E2E_AUTH',
+    'EXPO_PUBLIC_E2E_INSTANCE_URL',
+    'EXPO_PUBLIC_E2E_ACCESS_TOKEN',
+    'EXPO_PUBLIC_E2E_REFRESH_TOKEN',
+    'EXPO_PUBLIC_E2E_ALLOWED_HOSTS',
+    'EXPO_PUBLIC_E2E_ALLOW_ANY_HOST',
+  ] as const;
+  const configuredVariables = e2eVariables.filter((key) => {
+    const value = environment[key];
+    return key === 'EXPO_PUBLIC_E2E_AUTH' ? isTruthyEnv(value) : Boolean(value?.trim());
+  });
+
+  if (configuredVariables.length === 0) return;
+
+  throw new Error(
+    `Refusing to resolve app config for a release build with ${configuredVariables.join(', ')} set. ` +
+      'EXPO_PUBLIC_E2E_* values, including fixture tokens, are embedded in the JavaScript bundle. ' +
+      'Unset them for store/release builds or use the dedicated e2e profile.',
+  );
+}
+
+function isTruthyEnv(value: string | undefined): boolean {
+  if (!value) return false;
+  const normalized = value.trim().toLowerCase();
+  return normalized === '1' || normalized === 'true' || normalized === 'yes';
+}
+
 function readPackageVersion(): string | undefined {
   try {
     const pkg = JSON.parse(readFileSync('./package.json', 'utf8')) as { version?: string };
@@ -95,12 +140,6 @@ function readPackageVersion(): string | undefined {
   } catch {
     return undefined;
   }
-}
-
-function isTruthyEnv(value: string | undefined): boolean {
-  if (!value) return false;
-  const normalized = value.trim().toLowerCase();
-  return normalized === '1' || normalized === 'true' || normalized === 'yes';
 }
 
 function pluginName(entry: NonNullable<ExpoConfig['plugins']>[number]): string | null {

@@ -1,5 +1,7 @@
 import Constants from 'expo-constants';
 
+import { resolveE2eAuthEnabled } from './e2eGuard';
+
 const extra = (Constants.expoConfig?.extra ?? {}) as Record<string, unknown>;
 
 function extraString(key: string): string {
@@ -38,19 +40,41 @@ function envCsvPreserveCase(value: string | undefined): string[] {
     .filter(Boolean);
 }
 
+const isDev = (typeof __DEV__ !== 'undefined' && __DEV__) || process.env.NODE_ENV === 'development';
+
+export const SENTRY_ENVIRONMENT =
+  process.env.EXPO_PUBLIC_SENTRY_ENVIRONMENT ??
+  (extraString('sentryEnvironment') || (isDev ? 'development' : 'production'));
+
 /**
  * Maestro / local smoke only. When set, bootstrap seeds SecureStore tokens and
- * skips system-browser PKCE. Never enable on store or production EAS profiles.
+ * skips system-browser PKCE. Never enable on store or production EAS profiles —
+ * `resolveE2eAuthEnabled` now enforces that in code rather than by convention:
+ * the flag only takes effect on a dev build or the dedicated `e2e` EAS profile,
+ * and `app.config.ts` fails the build outright on a production profile (CW-354).
  */
-export const E2E_AUTH_ENABLED = envFlag(process.env.EXPO_PUBLIC_E2E_AUTH);
+export const E2E_AUTH_ENABLED = resolveE2eAuthEnabled({
+  flagEnabled: envFlag(process.env.EXPO_PUBLIC_E2E_AUTH),
+  isDev,
+  sentryEnvironment: SENTRY_ENVIRONMENT,
+});
 
 /** Instance base URL for e2e seed (no `/api` suffix). Defaults to DEFAULT_INSTANCE_URL. */
 export const E2E_INSTANCE_URL =
   process.env.EXPO_PUBLIC_E2E_INSTANCE_URL?.trim() || DEFAULT_INSTANCE_URL;
 
-export const E2E_ACCESS_TOKEN = process.env.EXPO_PUBLIC_E2E_ACCESS_TOKEN ?? '';
+/**
+ * Fixture tokens are gated on the resolved flag, not on the raw env var: on a
+ * production-like build they resolve to `''` so they can never reach
+ * `src/auth/e2eAuth.ts`, even though `EXPO_PUBLIC_*` values are baked into the bundle.
+ */
+export const E2E_ACCESS_TOKEN = E2E_AUTH_ENABLED
+  ? (process.env.EXPO_PUBLIC_E2E_ACCESS_TOKEN ?? '')
+  : '';
 
-export const E2E_REFRESH_TOKEN = process.env.EXPO_PUBLIC_E2E_REFRESH_TOKEN ?? '';
+export const E2E_REFRESH_TOKEN = E2E_AUTH_ENABLED
+  ? (process.env.EXPO_PUBLIC_E2E_REFRESH_TOKEN ?? '')
+  : '';
 
 /** Extra hostnames allowed for e2e instance URLs (comma-separated). */
 export const E2E_ALLOWED_HOSTS = envCsv(process.env.EXPO_PUBLIC_E2E_ALLOWED_HOSTS);
@@ -66,12 +90,6 @@ export const SENTRY_RELEASE =
 
 export const SENTRY_DIST =
   process.env.EXPO_PUBLIC_SENTRY_DIST ?? (extraString('sentryDist') || undefined);
-
-const isDev = (typeof __DEV__ !== 'undefined' && __DEV__) || process.env.NODE_ENV === 'development';
-
-export const SENTRY_ENVIRONMENT =
-  process.env.EXPO_PUBLIC_SENTRY_ENVIRONMENT ??
-  (extraString('sentryEnvironment') || (isDev ? 'development' : 'production'));
 
 export const APP_SCHEME = 'coachwatts';
 
