@@ -2,8 +2,6 @@ import { readFileSync } from 'node:fs';
 
 import type { ConfigContext, ExpoConfig } from 'expo/config';
 
-import { assertNoE2ePublicVariablesInReleaseBuild } from './src/config/e2eBuildGuard';
-
 /**
  * Dynamic Expo config. Static chrome lives in `app.json`; env/EAS injects
  * release observability without committing secrets.
@@ -92,6 +90,41 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     },
   } as ExpoConfig;
 };
+
+/**
+ * Expo evaluates `app.config.ts` outside Metro, so its store-build E2E guard
+ * must remain self-contained rather than import a TypeScript source module.
+ */
+function assertNoE2ePublicVariablesInReleaseBuild(environment: NodeJS.ProcessEnv): void {
+  const sentryEnvironment = environment.EXPO_PUBLIC_SENTRY_ENVIRONMENT?.trim().toLowerCase();
+  const isReleaseBuild =
+    environment.EAS_BUILD === 'true' ||
+    environment.NODE_ENV?.trim().toLowerCase() === 'production' ||
+    sentryEnvironment === 'production';
+
+  if (!isReleaseBuild) return;
+
+  const e2eVariables = [
+    'EXPO_PUBLIC_E2E_AUTH',
+    'EXPO_PUBLIC_E2E_INSTANCE_URL',
+    'EXPO_PUBLIC_E2E_ACCESS_TOKEN',
+    'EXPO_PUBLIC_E2E_REFRESH_TOKEN',
+    'EXPO_PUBLIC_E2E_ALLOWED_HOSTS',
+    'EXPO_PUBLIC_E2E_ALLOW_ANY_HOST',
+  ] as const;
+  const configuredVariables = e2eVariables.filter((key) => {
+    const value = environment[key];
+    return key === 'EXPO_PUBLIC_E2E_AUTH' ? isTruthyEnv(value) : Boolean(value?.trim());
+  });
+
+  if (configuredVariables.length === 0) return;
+
+  throw new Error(
+    `Refusing to resolve app config for a release build with ${configuredVariables.join(', ')} set. ` +
+      'EXPO_PUBLIC_E2E_* values, including fixture tokens, are embedded in the JavaScript bundle. ' +
+      'Unset them for store/release builds or use the dedicated e2e profile.',
+  );
+}
 
 function isTruthyEnv(value: string | undefined): boolean {
   if (!value) return false;
