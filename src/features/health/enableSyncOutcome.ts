@@ -28,7 +28,7 @@ export type EnableSyncOutcome = {
 };
 
 export const NO_DATA_HINT_IOS =
-  'No Health data was found on this device. If you granted access recently, open Health → Profile → Apps → Coach Watts and check that read access is on.';
+  'No Health data was found on this device. Open Health → Profile → Apps → Coach Watts and check that read access is on. If Coach Watts is not listed there, delete and reinstall the app — iOS only shows the consent sheet once, and reinstalling brings it back.';
 
 export const NO_DATA_HINT_ANDROID =
   'No Health Connect data was found on this device. Check that your fitness apps write to Health Connect and that Coach Watts has read access.';
