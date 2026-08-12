@@ -23,7 +23,10 @@ Format:
 - **Upload succeeded** to App Store Connect; ASC processing started. dSYM warning for `hermesvm.framework` (prebuilt Hermes, non-blocking — same class of warning as build 4).
 - What testers get over 0.1.1 (4): **CW-571** Apple Health no longer claims *Connected* when nothing is readable and the dead "Request access again" button is gone; **CW-573** Recent workouts Sync / Sync all are no longer silently inert when Sync to Coach Watts is off; **CW-575** flaky measurement test.
 - **0.1.1 (4) remains in App Review** — uploading build 5 does not alter that submission; the attached build only changes if it is attached in ASC.
-- Next: wait for ASC processing → confirm build 5 reaches TestFlight internal group **WM** → notify testers.
+- ASC processing completed; build 5 reached internal group **WM** automatically.
+- **Distributed to external group ALPHA** (2 testers) by adding the group on the build's Test Information tab, with "What to Test" notes covering the CW-571 badge change and the CW-573 sync controls, and *Automatically notify testers* left on. Beta App Review passed immediately (0.1.1 had already cleared it on an earlier build) — build 5 went straight to **Testing** with groups **WM + AL**.
+- **Deliberately did not swap the build attached to App Review.** 0.1.1 is **Waiting for Review** with build **4**; ASC only allows changing the build by removing the version from review, which forfeits the queue position held since 2026-08-09. Tester access is controlled by TestFlight groups, not by the attached build, so the swap would have cost the slot and helped no tester. Verified afterwards that the version still reads *0.1.1 Waiting for Review*.
+- Next: watch for App Review outcome on build 4; if it is rejected or withdrawn for another reason, attach build 5 at that point rather than pre-emptively.
 
 ## 2026-08-09 — Play production submitted for review (017)
 
