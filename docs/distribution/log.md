@@ -14,6 +14,17 @@ Format:
 
 ---
 
+## 2026-08-12 — TestFlight build 0.1.1 (5) uploaded (006, CW-576)
+
+- Cut from **`master`** at `1747244` (merge of #179), identical to `develop` at the time — 55 commits since the 0.1.1 (4) submission.
+- Bumped `expo.ios.buildNumber` **4 → 5**; parked `.env.local` (e2e flags) for the store prebuild and restored it afterwards.
+- `npx expo prebuild -p ios --clean` → `xcodebuild archive` → `xcodebuild -exportArchive` with `dist/ios/ExportOptions-upload.plist` (`destination=upload`).
+- Artifacts: `dist/ios/CoachWatts-0.1.1-5.xcarchive`; logs `dist/ios/archive-0.1.1-5.log`, `dist/ios/export-upload-0.1.1-5.log`.
+- **Upload succeeded** to App Store Connect; ASC processing started. dSYM warning for `hermesvm.framework` (prebuilt Hermes, non-blocking — same class of warning as build 4).
+- What testers get over 0.1.1 (4): **CW-571** Apple Health no longer claims *Connected* when nothing is readable and the dead "Request access again" button is gone; **CW-573** Recent workouts Sync / Sync all are no longer silently inert when Sync to Coach Watts is off; **CW-575** flaky measurement test.
+- **0.1.1 (4) remains in App Review** — uploading build 5 does not alter that submission; the attached build only changes if it is attached in ASC.
+- Next: wait for ASC processing → confirm build 5 reaches TestFlight internal group **WM** → notify testers.
+
 ## 2026-08-09 — Play production submitted for review (017)
 
 - **Publishing overview → Send 11 changes for review** confirmed (production **6 (0.1.1)**, **176 countries**, store listing, Data safety, Sign in details, etc.).

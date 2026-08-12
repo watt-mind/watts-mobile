@@ -10,7 +10,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.coachwatts.app",
-      "buildNumber": "4",
+      "buildNumber": "5",
       "icon": "./assets/images/icon.png",
       "associatedDomains": ["applinks:coachwatts.com"],
       "infoPlist": {
