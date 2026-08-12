@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useSyncExternalStore } from 'react';
+import { Platform } from 'react-native';
 
 import {
   getHealthSyncPreferencesSync,
@@ -13,7 +14,10 @@ import {
   registerHealthSyncBackgroundTask,
   unregisterHealthSyncBackgroundTask,
 } from './backgroundTask';
-import { requestHealthSyncPermissions } from './syncPermissions';
+import {
+  healthPermissionFailureMessage,
+  requestHealthSyncPermissionsResult,
+} from './syncPermissions';
 import { runHealthSyncPass, type SyncPassResult } from './orchestrator';
 
 /**
@@ -60,9 +64,9 @@ export function useHealthSyncPreferences() {
 
   const setEnabled = useCallback(async (enabled: boolean): Promise<HealthSyncPreferenceChange> => {
     if (enabled) {
-      const granted = await requestHealthSyncPermissions();
-      if (!granted) {
-        throw new Error('Health permissions are required to enable sync');
+      const request = await requestHealthSyncPermissionsResult();
+      if (!request.ok) {
+        throw new Error(healthPermissionFailureMessage(request, Platform.OS));
       }
       const next = await setHealthSyncEnabled(true);
       await registerHealthSyncBackgroundTask();
@@ -75,9 +79,9 @@ export function useHealthSyncPreferences() {
 
   const setWorkouts = useCallback(async (enabled: boolean): Promise<HealthSyncPreferenceChange> => {
     if (enabled) {
-      const granted = await requestHealthSyncPermissions();
-      if (!granted) {
-        throw new Error('Workout health permissions are required to enable workout sync');
+      const request = await requestHealthSyncPermissionsResult();
+      if (!request.ok) {
+        throw new Error(healthPermissionFailureMessage(request, Platform.OS));
       }
     }
     const next = await setHealthSyncWorkouts(enabled);

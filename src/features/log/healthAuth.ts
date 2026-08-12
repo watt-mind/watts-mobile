@@ -1,5 +1,6 @@
 import { Linking, Platform } from 'react-native';
 
+import { resolveHealthKitAccess } from '@/src/features/health/healthKitAccess';
 import {
   hasRequiredHealthConnectPermissions,
   HEALTHKIT_SYNC_READ_TYPES,
@@ -10,8 +11,8 @@ export type HealthAuthStatus =
   | 'loading'
   | 'not_available'
   | 'should_request'
-  | 'unnecessary' // iOS: requested, but read permissions are managed in Apple Health
-  | 'connected' // Android: required sync read permissions granted
+  | 'unnecessary' // iOS: requested, but whether reads were granted is unknowable (CW-571)
+  | 'connected' // Android: required reads granted. iOS: a probe read returned data
   | 'partially_connected' // Android: some reads granted, but not the full sync set
   | 'not_connected'; // Android: no permissions granted
 
@@ -35,6 +36,52 @@ function hasRead(
   return granted.some((p) => p.recordType === recordType && p.accessType === 'read');
 }
 
+/** How far back the read probe looks for any sample at all. */
+const PROBE_LOOKBACK_DAYS = 90;
+
+/**
+ * Types the probe tries, cheapest and most-populated first.
+ *
+ * Any one hit proves reads work, so this stops at the first sample rather than
+ * querying the full sync set.
+ */
+const PROBE_QUANTITY_TYPES = [
+  { identifier: 'HKQuantityTypeIdentifierStepCount', unit: 'count' },
+  { identifier: 'HKQuantityTypeIdentifierHeartRate', unit: 'count/min' },
+  { identifier: 'HKQuantityTypeIdentifierBodyMass', unit: 'kg' },
+] as const;
+
+/**
+ * Best-effort check that HealthKit reads actually return something (CW-571).
+ *
+ * This exists because HealthKit will not tell us whether read access was
+ * granted, so the only positive evidence available is a read that comes back
+ * with data. It can only ever *upgrade* the reported status: a throw or an
+ * empty store both return `false`, which leaves the athlete on the honest
+ * "requested, unverified" state rather than a fabricated denial.
+ */
+async function probeHealthKitReadAccess(
+  HK: typeof import('@kingstinct/react-native-healthkit'),
+): Promise<boolean> {
+  const endDate = new Date();
+  const startDate = new Date(endDate.getTime() - PROBE_LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
+
+  for (const { identifier, unit } of PROBE_QUANTITY_TYPES) {
+    try {
+      const samples = await HK.queryQuantitySamples(identifier, {
+        limit: 1,
+        ascending: false,
+        unit,
+        filter: { date: { startDate, endDate } },
+      });
+      if (samples && samples.length > 0) return true;
+    } catch {
+      // A single unreadable type says nothing about the rest — keep probing.
+    }
+  }
+  return false;
+}
+
 async function getHealthKitAuthStatus(): Promise<HealthStatusResult> {
   try {
     const HK = await import('@kingstinct/react-native-healthkit');
@@ -51,11 +98,25 @@ async function getHealthKitAuthStatus(): Promise<HealthStatusResult> {
     });
 
     if (requestStatus === AuthorizationRequestStatus.shouldRequest) {
-      return { status: 'should_request' };
-    } else if (requestStatus === AuthorizationRequestStatus.unnecessary) {
-      return { status: 'unnecessary' };
+      return {
+        status: resolveHealthKitAccess({ requestStatus: 'should_request', probeFoundData: false }),
+      };
     }
-    return { status: 'should_request' };
+
+    // `.unnecessary` means "already granted **or** denied" — it is not evidence
+    // of access, so only a real read can promote this to connected (CW-571).
+    if (requestStatus === AuthorizationRequestStatus.unnecessary) {
+      return {
+        status: resolveHealthKitAccess({
+          requestStatus: 'already_requested',
+          probeFoundData: await probeHealthKitReadAccess(HK),
+        }),
+      };
+    }
+
+    return {
+      status: resolveHealthKitAccess({ requestStatus: 'should_request', probeFoundData: false }),
+    };
   } catch (err) {
     console.warn('[HealthKit] Error checking auth status:', err);
     return { status: 'not_available' };
