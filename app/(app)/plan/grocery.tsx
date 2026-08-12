@@ -8,7 +8,8 @@ import { Button } from '@/src/components/Button';
 import { ListSkeleton } from '@/src/components/Skeleton';
 import { useNutritionGroceryQuery } from '@/src/features/nutrition/useNutrition';
 import { formatWeekRangeLabel } from '@/src/features/plans/formatPlanCopy';
-import { mapGroceryItems, weekRangeFromOffset } from '@/src/features/plans/mapNutritionPlan';
+import { weekRangeFromOffset } from '@/src/lib/date';
+import { mapGroceryItems } from '@/src/features/plans/mapNutritionPlan';
 import { APP_HREFS } from '@/src/linking/appHrefs';
 
 export default function PlanGroceryScreen() {

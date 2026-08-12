@@ -18,7 +18,7 @@ import {
   useRecentActivityQuery,
   useUpcomingPlannedQuery,
 } from '@/src/features/activity/useActivity';
-import { localDateKey } from '@/src/features/today/weekGlance';
+import { localDateKey } from '@/src/lib/date';
 import { useOfflineCached } from '@/src/hooks/useOfflineCached';
 import { humanizeWorkoutType } from '@/src/lib/humanizeWorkoutType';
 import { APP_HREFS } from '@/src/linking/appHrefs';

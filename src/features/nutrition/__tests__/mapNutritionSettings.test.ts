@@ -7,6 +7,7 @@ import {
   hydrationPresetVolumes,
   mapNutritionSettingsResponse,
   normalizeQuickAddVolumes,
+  quickAddVolumesError,
   toNutritionSettingsPayload,
 } from '../mapNutritionSettings';
 import { DEFAULT_NUTRITION_SETTINGS_FORM } from '../nutritionSettingsTypes';
@@ -16,12 +17,60 @@ describe('normalizeQuickAddVolumes', () => {
     expect(normalizeQuickAddVolumes(undefined)).toEqual([250, 500, 750]);
   });
 
-  it('sorts, clamps length to 3, and fills gaps', () => {
-    expect(normalizeQuickAddVolumes([750, 250])).toEqual([250, 750, 750]);
+  it('sorts, clamps length to 3, and backfills with an unused default (CW-542)', () => {
+    // Behaviour change: the backfill used to index DEFAULT_QUICK_ADD_VOLUMES by
+    // position (`fallback[normalized.length]`), which reintroduced 750 here.
+    expect(normalizeQuickAddVolumes([750, 250])).toEqual([250, 500, 750]);
   });
 
   it('filters invalid volumes', () => {
     expect(normalizeQuickAddVolumes([10, 250, 500, 3000, 750])).toEqual([250, 500, 750]);
+  });
+
+  it('de-duplicates user-entered duplicates', () => {
+    expect(normalizeQuickAddVolumes([250, 250, 500])).toEqual([250, 500, 750]);
+  });
+
+  it('never backfills a value already present', () => {
+    expect(normalizeQuickAddVolumes([500, 500, 750])).toEqual([250, 500, 750]);
+    expect(normalizeQuickAddVolumes([750])).toEqual([250, 500, 750]);
+    expect(normalizeQuickAddVolumes([1000, 1000, 1000])).toEqual([250, 500, 1000]);
+  });
+
+  it('always returns three distinct ascending volumes', () => {
+    const cases: unknown[] = [
+      undefined,
+      [],
+      [250, 250, 250],
+      [900, 900],
+      [10, 10, 3000],
+      [400, 400.4, 399.6],
+    ];
+    for (const input of cases) {
+      const result = normalizeQuickAddVolumes(input);
+      expect(result).toHaveLength(3);
+      expect(new Set(result).size).toBe(3);
+      expect([...result].sort((a, b) => a - b)).toEqual(result);
+    }
+  });
+});
+
+describe('quickAddVolumesError', () => {
+  it('returns null for three distinct volumes', () => {
+    expect(quickAddVolumesError([250, 500, 750])).toBeNull();
+  });
+
+  it('returns a user-facing message when volumes repeat', () => {
+    expect(quickAddVolumesError([250, 250, 500])).toBe(
+      'Quick-add volumes must be three different values.',
+    );
+    expect(quickAddVolumesError([500, 500, 500])).toBe(
+      'Quick-add volumes must be three different values.',
+    );
+  });
+
+  it('ignores non-finite entries rather than flagging them as duplicates', () => {
+    expect(quickAddVolumesError([250, Number.NaN, 750])).toBeNull();
   });
 });
 

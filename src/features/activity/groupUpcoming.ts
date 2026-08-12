@@ -1,4 +1,4 @@
-import { localDateKey } from '@/src/features/today/weekGlance';
+import { localDateKey } from '@/src/lib/date';
 
 import type { PlannedListItem } from './types';
 

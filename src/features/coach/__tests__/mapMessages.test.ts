@@ -14,6 +14,7 @@ import {
   messageText,
   nutritionToolSummaries,
   resolveToolDomain,
+  shouldHideAssistantBubble,
   toolInProgressSummaries,
   toolOutcomeSummaries,
   transformStoredMessage,
@@ -72,6 +73,120 @@ describe('mapMessages', () => {
     expect(hasActiveTurn(next)).toBe(true);
   });
 
+  it('drops a stale text delta that would revive a completed message', () => {
+    const initial: CoachUIMessage[] = [
+      {
+        id: 'a1',
+        role: 'assistant',
+        content: 'All done.',
+        parts: [{ type: 'text', text: 'All done.' }],
+        metadata: { turnId: 'turn-1', turnStatus: 'COMPLETED' },
+      },
+    ];
+
+    const next = applyAssistantTextDelta(initial, {
+      messageId: 'a1',
+      turnId: 'turn-1',
+      textDelta: ' stray',
+      status: 'STREAMING',
+    });
+
+    expect(messageText(next[0])).toBe('All done.');
+    expect(next[0]?.metadata?.turnStatus).toBe('COMPLETED');
+    expect(hasActiveTurn(next)).toBe(false);
+  });
+
+  it('drops a stale text delta with no status onto a completed message', () => {
+    const initial: CoachUIMessage[] = [
+      {
+        id: 'a1',
+        role: 'assistant',
+        content: 'All done.',
+        parts: [{ type: 'text', text: 'All done.' }],
+        metadata: { turnId: 'turn-1', turnStatus: 'COMPLETED' },
+      },
+    ];
+
+    const next = applyAssistantTextDelta(initial, {
+      messageId: 'a1',
+      turnId: 'turn-1',
+      textDelta: ' stray',
+    });
+
+    expect(messageText(next[0])).toBe('All done.');
+    expect(next[0]?.metadata?.turnStatus).toBe('COMPLETED');
+    expect(hasActiveTurn(next)).toBe(false);
+  });
+
+  it('still applies a delta that carries its own terminal status', () => {
+    const initial: CoachUIMessage[] = [
+      {
+        id: 'a1',
+        role: 'assistant',
+        content: 'All done',
+        parts: [{ type: 'text', text: 'All done' }],
+        metadata: { turnId: 'turn-1', turnStatus: 'COMPLETED' },
+      },
+    ];
+
+    const next = applyAssistantTextDelta(initial, {
+      messageId: 'a1',
+      turnId: 'turn-1',
+      textDelta: '.',
+      status: 'COMPLETED',
+    });
+
+    expect(messageText(next[0])).toBe('All done.');
+    expect(next[0]?.metadata?.turnStatus).toBe('COMPLETED');
+    expect(hasActiveTurn(next)).toBe(false);
+  });
+
+  it('still appends an active delta to a streaming message', () => {
+    const initial: CoachUIMessage[] = [
+      {
+        id: 'a1',
+        role: 'assistant',
+        content: 'Nearly',
+        parts: [{ type: 'text', text: 'Nearly' }],
+        metadata: { turnId: 'turn-1', turnStatus: 'STREAMING' },
+      },
+    ];
+
+    const next = applyAssistantTextDelta(initial, {
+      messageId: 'a1',
+      turnId: 'turn-1',
+      textDelta: ' there',
+      status: 'STREAMING',
+    });
+
+    expect(messageText(next[0])).toBe('Nearly there');
+    expect(next[0]?.metadata?.turnStatus).toBe('STREAMING');
+    expect(hasActiveTurn(next)).toBe(true);
+  });
+
+  it('still appends a new realtime draft when the delta targets an unknown message', () => {
+    const initial: CoachUIMessage[] = [
+      {
+        id: 'a1',
+        role: 'assistant',
+        content: 'All done.',
+        parts: [{ type: 'text', text: 'All done.' }],
+        metadata: { turnId: 'turn-1', turnStatus: 'COMPLETED' },
+      },
+    ];
+
+    const next = applyAssistantTextDelta(initial, {
+      messageId: 'a2',
+      turnId: 'turn-2',
+      textDelta: 'Next',
+    });
+
+    expect(next).toHaveLength(2);
+    expect(messageText(next[1])).toBe('Next');
+    expect(next[1]?.metadata?.turnStatus).toBe('STREAMING');
+    expect(next[1]?.metadata?.isRealtimeDraft).toBe(true);
+  });
+
   it('does not regress terminal turn status when merging a stale active upsert', () => {
     const existing = transformStoredMessage({
       id: 'a1',
@@ -113,6 +228,68 @@ describe('mapMessages', () => {
 
     expect(messageImageParts(message)).toHaveLength(1);
     expect(extractPendingApprovals(message)[0]?.toolCallId).toBe('call-1');
+  });
+
+  const imageMessage = (url: string, mediaType?: string): CoachUIMessage => ({
+    id: `img-${url}`,
+    role: 'assistant',
+    parts: [
+      {
+        type: 'file',
+        url,
+        ...(mediaType ? { mediaType } : {}),
+        filename: 'shot.png',
+      } as unknown as CoachUIMessage['parts'][number],
+    ],
+  });
+
+  it('drops image parts whose url is not http(s)', () => {
+    // Model output and tool results are not trusted: a local-file or inline-data
+    // url must never reach the RN image loader (CW-351).
+    expect(messageImageParts(imageMessage('file:///etc/passwd.png', 'image/png'))).toEqual([]);
+    expect(
+      messageImageParts(
+        imageMessage(
+          'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+          'image/png',
+        ),
+      ),
+    ).toEqual([]);
+    // The extension branch must not smuggle an unsafe url in without a mediaType.
+    expect(messageImageParts(imageMessage('file:///etc/passwd.png'))).toEqual([]);
+    expect(messageImageParts(imageMessage('javascript:alert(1)//x.png', 'image/png'))).toEqual([]);
+    expect(messageImageParts(imageMessage('/relative/path.png', 'image/png'))).toEqual([]);
+    expect(messageImageParts(imageMessage('not a url at all', 'image/png'))).toEqual([]);
+    expect(messageImageParts(imageMessage('', 'image/png'))).toEqual([]);
+  });
+
+  it('keeps http(s) image parts with mediaType and filename intact', () => {
+    expect(
+      messageImageParts(imageMessage('https://cdn.example.com/meal.png', 'image/png')),
+    ).toEqual([
+      { url: 'https://cdn.example.com/meal.png', mediaType: 'image/png', filename: 'shot.png' },
+    ]);
+    expect(messageImageParts(imageMessage('http://cdn.example.com/meal.png', 'image/png'))).toEqual(
+      [{ url: 'http://cdn.example.com/meal.png', mediaType: 'image/png', filename: 'shot.png' }],
+    );
+    // Still admitted via the extension branch when the server omits mediaType.
+    expect(messageImageParts(imageMessage('https://cdn.example.com/meal.jpeg'))).toEqual([
+      { url: 'https://cdn.example.com/meal.jpeg', mediaType: undefined, filename: 'shot.png' },
+    ]);
+  });
+
+  it('treats an assistant message whose only image is unsafe as having no images', () => {
+    const message: CoachUIMessage = {
+      ...imageMessage('file:///etc/passwd.png', 'image/png'),
+      metadata: { hideUntilContent: true },
+    };
+    expect(shouldHideAssistantBubble(message)).toBe(true);
+
+    const safe: CoachUIMessage = {
+      ...imageMessage('https://cdn.example.com/meal.png', 'image/png'),
+      metadata: { hideUntilContent: true },
+    };
+    expect(shouldHideAssistantBubble(safe)).toBe(false);
   });
 
   it('summarizes completed nutrition tool parts', () => {

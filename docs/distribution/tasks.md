@@ -13,12 +13,12 @@ Hub: [../distribution.md](../distribution.md).
 | [001](./tasks/001-apple-developer-account.md) | Apple ID + Developer Program enrollment (Watt Mind Kft. Org) | account | high | done |
 | [002](./tasks/002-app-store-connect-app.md) | Create ASC app record for `com.coachwatts.app` | listing | high | done |
 | [003](./tasks/003-privacy-and-compliance.md) | App Privacy labels, export compliance, age rating | listing | high | done |
-| [004](./tasks/004-listing-metadata-assets.md) | Listing text done; marketing iPhone screenshots (0/10) | listing | high | in-progress |
+| [004](./tasks/004-listing-metadata-assets.md) | Listing text done; marketing iPhone screenshots (9/10) | listing | high | in-progress |
 | [005](./tasks/005-eas-credentials-and-secrets.md) | iOS signing + production env (local Mac; not EAS) | build | high | open |
-| [006](./tasks/006-ios-production-build.md) | Local Xcode Archive → TestFlight upload | build | high | open |
-| [007](./tasks/007-testflight-smoke.md) | TestFlight smoke on release binary | qa | high | open |
+| [006](./tasks/006-ios-production-build.md) | Local Xcode Archive → TestFlight upload | build | high | done |
+| [007](./tasks/007-testflight-smoke.md) | TestFlight smoke on release binary | qa | high | done |
 | [008](./tasks/008-reviewer-demo-account.md) | ASC SIWA notes + Play Google demo Gmail | review | high | in-progress |
-| [009](./tasks/009-submit-for-review.md) | Submit build for App Review | review | high | open |
+| [009](./tasks/009-submit-for-review.md) | Submit build for App Review | review | high | done |
 
 ## In-repo store readiness (cross-check)
 
@@ -45,11 +45,11 @@ Can start account verification **while Apple is reviewing**. Shipping priority r
 | [010](./tasks/010-google-play-developer-account.md) | Play Console Organization (Watt Mind Kft.) | account | medium | done |
 | [011](./tasks/011-play-console-app.md) | Create Play app `com.coachwatts.app` | listing | medium | done |
 | [012](./tasks/012-play-data-safety-and-content.md) | Data safety, content rating, policies | listing | medium | done |
-| [013](./tasks/013-play-listing-assets.md) | Play listing pack: copy, icon, feature graphic, screenshots | listing | medium | open |
+| [013](./tasks/013-play-listing-assets.md) | Play listing pack: copy, icon, feature graphic, screenshots | listing | medium | done |
 | [014](./tasks/014-eas-android-credentials.md) | Android upload keystore + production env (local; not EAS) | build | medium | in-progress |
-| [015](./tasks/015-android-production-build.md) | Local Gradle AAB → Play Internal testing | build | medium | in-progress |
-| [016](./tasks/016-play-internal-test-smoke.md) | Internal test smoke on release AAB | qa | medium | open |
-| [017](./tasks/017-play-production-submit.md) | Promote to production / Play review | review | medium | open |
+| [015](./tasks/015-android-production-build.md) | Local Gradle AAB → Play Internal testing | build | medium | done |
+| [016](./tasks/016-play-internal-test-smoke.md) | Internal test smoke on release AAB | qa | medium | done |
+| [017](./tasks/017-play-production-submit.md) | Promote to production / Play review | review | medium | in-progress |
 
 ## Store subscriptions / RevenueCat
 

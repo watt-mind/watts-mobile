@@ -1,4 +1,4 @@
-import { localDateYmd } from './mapToWellnessPayload';
+import { localDateYmd } from '@/src/lib/date';
 import { sportLabel } from './sportTypes';
 import type { PlatformWorkoutSession, RemoteWorkoutMatchCandidate } from './types';
 import { WORKOUT_MATCH_TOLERANCE_MS } from './types';
@@ -33,6 +33,10 @@ export function matchRemoteWorkout(
   const startMs = new Date(session.startedAt).getTime();
   if (!Number.isFinite(startMs)) return null;
   const sessionYmd = localDateYmd(new Date(startMs));
+  // Remote date-only values are frequently midnight-UTC normalized, so an
+  // evening workout west of UTC (or an early-morning one east of it) lands on a
+  // different calendar day than the local one. Accept either (CW-464).
+  const sessionUtcYmd = new Date(startMs).toISOString().slice(0, 10);
   const sessionSport = normalizedSport(session.sportType);
   const exactExternalId = platformWorkoutExternalId(session);
 
@@ -52,7 +56,7 @@ export function matchRemoteWorkout(
       // No time component (or midnight-UTC normalized) — match on calendar
       // day taken directly from the date string, requiring duration
       // agreement when both sides have one so same-day workouts don't collide.
-      if (dateOnlyMatch[1] !== sessionYmd) continue;
+      if (dateOnlyMatch[1] !== sessionYmd && dateOnlyMatch[1] !== sessionUtcYmd) continue;
       if (session.durationSec == null || remote.durationSec == null) continue;
       const durDelta =
         session.durationSec != null &&

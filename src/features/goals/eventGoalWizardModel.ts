@@ -1,5 +1,7 @@
 import { isValidCalendarYmd } from '@/src/features/log/mapLogForm';
-import { localDateKey } from '@/src/features/today/weekGlance';
+import { localDateKey } from '@/src/lib/date';
+import { parseDecimal } from '@/src/lib/parseDecimal';
+import { ymdToWireDate } from '@/src/lib/wireDate';
 
 import type { CreateGoalInput, GoalType } from './types';
 
@@ -86,6 +88,19 @@ export const PRIORITY_OPTIONS: { id: GoalPriority; label: string }[] = [
   { id: 'LOW', label: 'Low' },
 ];
 
+/**
+ * Parse an optional start/target value. Comma decimals are accepted (CW-484,
+ * CW-557): the wizard's numeric fields use a decimal-pad keyboard, whose only
+ * decimal key emits ',' in comma-decimal locales, so `Number("27,5")` was NaN
+ * and `validateEventGoalWizardForm` rejected a perfectly valid entry with
+ * "Target value must be a number." Returns `undefined` for blank or
+ * unparseable text so callers can omit the field rather than wire up a NaN.
+ */
+function parseOptionalNumber(value: string): number | undefined {
+  const n = parseDecimal(value);
+  return n == null ? undefined : n;
+}
+
 export function emptyEventGoalWizardForm(type: GoalType = 'EVENT'): EventGoalWizardForm {
   return {
     type,
@@ -101,14 +116,17 @@ export function emptyEventGoalWizardForm(type: GoalType = 'EVENT'): EventGoalWiz
   };
 }
 
-/** Web PlanWizard / EventGoalWizard deadline: local date @ 23:59:59 UTC. */
-export function ymdToIsoEndOfDay(ymd: string): string {
-  return new Date(`${ymd}T23:59:59.000Z`).toISOString();
-}
-
-export function ymdToIsoStartOfDay(ymd: string): string {
-  return new Date(`${ymd}T00:00:00.000Z`).toISOString();
-}
+/**
+ * EventGoalWizard deadline / event date on the wire.
+ *
+ * CW-493: both used to be UTC-anchored at a fixed hour (`T23:59:59Z` for the
+ * deadline, `T00:00:00Z` for the event), and the 23:59:59 variant pushed the
+ * day forward for every zone east of UTC — a Kolkata (UTC+5:30) deadline of
+ * Aug 10 landed at 05:29 local on Aug 11 and the countdown read one day
+ * short. Both are now the canonical UTC-midnight day marker, which
+ * `localDateKey` round-trips unchanged in every zone.
+ */
+export const ymdToGoalDateIso = ymdToWireDate;
 
 export type SelectableEvent = {
   id: string;
@@ -235,10 +253,10 @@ export function validateEventGoalWizardForm(
     form.type === 'BODY_COMPOSITION' ||
     form.type === 'CONSISTENCY'
   ) {
-    if (form.targetValue.trim() && Number.isNaN(Number(form.targetValue))) {
+    if (form.targetValue.trim() && parseOptionalNumber(form.targetValue) === undefined) {
       return 'Target value must be a number.';
     }
-    if (form.startValue.trim() && Number.isNaN(Number(form.startValue))) {
+    if (form.startValue.trim() && parseOptionalNumber(form.startValue) === undefined) {
       return 'Start value must be a number.';
     }
   }
@@ -283,7 +301,7 @@ export function buildEventGoalWizardInput(
     input.description = form.description.trim();
   }
   if (targetYmd && isValidCalendarYmd(targetYmd)) {
-    input.targetDate = ymdToIsoEndOfDay(targetYmd);
+    input.targetDate = ymdToGoalDateIso(targetYmd);
   }
 
   if (form.type === 'EVENT') {
@@ -292,7 +310,7 @@ export function buildEventGoalWizardInput(
       input.eventIds = [...form.eventIds];
       input.eventId = form.eventIds[form.eventIds.length - 1];
       if (primary?.dateKey) {
-        input.eventDate = ymdToIsoStartOfDay(primary.dateKey);
+        input.eventDate = ymdToGoalDateIso(primary.dateKey);
       }
       if (primary?.distance != null) input.distance = primary.distance;
       if (primary?.elevation != null) input.elevation = primary.elevation;
@@ -303,8 +321,8 @@ export function buildEventGoalWizardInput(
 
     // Activation / empty-calendar path — server creates a linked event from stub.
     const dateIso = targetYmd
-      ? ymdToIsoStartOfDay(targetYmd)
-      : ymdToIsoStartOfDay(form.targetDate.trim());
+      ? ymdToGoalDateIso(targetYmd)
+      : ymdToGoalDateIso(form.targetDate.trim());
     input.eventData = {
       title,
       date: dateIso,
@@ -315,22 +333,25 @@ export function buildEventGoalWizardInput(
     return input;
   }
 
+  const startValue = parseOptionalNumber(form.startValue);
+  const targetValue = parseOptionalNumber(form.targetValue);
+
   if (form.type === 'BODY_COMPOSITION') {
     input.metric = 'weight_kg';
-    if (form.startValue.trim()) input.startValue = Number(form.startValue);
-    if (form.targetValue.trim()) input.targetValue = Number(form.targetValue);
+    if (startValue !== undefined) input.startValue = startValue;
+    if (targetValue !== undefined) input.targetValue = targetValue;
     return input;
   }
 
   if (form.type === 'PERFORMANCE') {
     if (form.metric.trim()) input.metric = form.metric.trim();
-    if (form.startValue.trim()) input.startValue = Number(form.startValue);
-    if (form.targetValue.trim()) input.targetValue = Number(form.targetValue);
+    if (startValue !== undefined) input.startValue = startValue;
+    if (targetValue !== undefined) input.targetValue = targetValue;
     return input;
   }
 
   // CONSISTENCY
   if (form.metric.trim()) input.metric = form.metric.trim();
-  if (form.targetValue.trim()) input.targetValue = Number(form.targetValue);
+  if (targetValue !== undefined) input.targetValue = targetValue;
   return input;
 }

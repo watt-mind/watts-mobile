@@ -16,8 +16,8 @@
 
 - Email: **`coachwatts.play.review@gmail.com`**
 - Use for: Play Console review, TestFlight external/beta reviewers, and human testers signing in with Google.
-- Password locations (not git): Watt Mind password manager, ASC TestFlight → **Test Information → Beta App Review Information → Sign-In Information**, Play Console Sign in details.
-- Still needed: seed this Google identity as an athlete on `https://coachwatts.com` (one Google OAuth login).
+- Password locations (not git): Watt Mind password manager, ASC TestFlight → **Test Information → Beta App Review Information → Sign-In Information**, Play Console Sign in details, and local Mac gitignored `.env` keys `PLAY_DEMO_GOOGLE_EMAIL` / `PLAY_DEMO_GOOGLE_PASSWORD` (never `EXPO_PUBLIC_*`; never commit).
+- Seeded on hosted (2026-08-09): Google OAuth identity exists; screenshot-ready synthetic goal/plan/workouts/wellness/nutrition/coach chat via `coach-wattz/scripts/tmp-seed-play-review-demo.ts --prod` (not a raw founder-data copy).
 
 ### Apple App Store review (ASC Distribution)
 
@@ -56,8 +56,9 @@
 5. [ ] Optionally soften empty first-run UX ([056](../../issues/056.md)) — new SIWA accounts start empty.
 6. [x] ASC App Review notes + contact on 0.1.1 (Laszlo Racz / `deploy@watt-mind.com` / `+36302858822`).
 7. [x] ASC TestFlight → Test Information: Sign-In = Google demo email + password; Review Notes explain Google on IdP (saved 2026-07-23).
-8. [ ] Smoke once on TestFlight: PKCE → Safari → Google demo (or SIWA) → authenticated shell ([007](./007-testflight-smoke.md)).
-9. [ ] Smoke once on Play internal test: PKCE → Chrome Custom Tabs → Google demo → authenticated shell ([016](./016-play-internal-test-smoke.md)).
+8. [x] Smoke once on TestFlight: PKCE → Safari → Google demo (or SIWA) → authenticated shell ([007](./007-testflight-smoke.md)). *(Release sim smoke 2026-08-09; IdP session reuse after sign-out.)*
+9. [ ] Smoke once on Play internal test: PKCE → Chrome Custom Tabs → Google demo → authenticated shell ([016](./016-play-internal-test-smoke.md)). *(Human testers passed Internal smoke 2026-08-09 — user sign-off.)*
+10. [x] Play **Sign in details**: Google demo email + password + OAuth notes verified on testing-credentials page (2026-08-09).
 
 ### ASC App Review notes template (Distribution)
 
@@ -89,4 +90,4 @@ OAuth only (no in-app password). Default instance https://coachwatts.com. Tap Si
 ## Done when
 
 - ASC Test Information has Google demo Sign-In; App Review notes explain SIWA + Google fallback; hosted SIWA live; TestFlight smoke succeeds.
-- Play Sign in details have the Google demo email; athlete seeded on hosted instance; Play internal-test smoke succeeds.
+- Play Sign in details have the Google demo email **and password**; athlete seeded on hosted instance; Play internal-test smoke succeeds (testers 2026-08-09).

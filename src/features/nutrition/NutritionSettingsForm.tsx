@@ -1,17 +1,11 @@
 import { useMemo, useState, type ReactNode } from 'react';
-import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  Switch,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { Pressable, ScrollView, Switch, Text, TextInput, View } from 'react-native';
 
 import { friendlyError } from '@/src/api/errors';
 import { Button } from '@/src/components/Button';
+import { Spinner } from '@/src/components/Spinner';
 import { hapticError, hapticLight, hapticSuccess } from '@/src/lib/haptics';
+import { parseDecimal } from '@/src/lib/parseDecimal';
 import { Colors } from '@/src/theme/colors';
 import { useThemeColors } from '@/src/theme/useThemeColors';
 import { useTabScrollPadding } from '@/src/hooks/useTabScrollPadding';
@@ -20,6 +14,7 @@ import {
   computeTargetCalories,
   computeTdee,
   defaultAdjustmentForGoal,
+  quickAddVolumesError,
   settingsFormEquals,
   toNutritionSettingsPayload,
 } from './mapNutritionSettings';
@@ -98,7 +93,7 @@ function NumberField({
   if (value !== previousValue) {
     setPreviousValue(value);
     const next = value == null ? '' : String(value);
-    setText((prev) => (prev === next || Number(prev) === value ? prev : next));
+    setText((prev) => (prev === next || parseDecimal(prev) === value ? prev : next));
   }
 
   return (
@@ -118,8 +113,10 @@ function NumberField({
             onChange(null);
             return;
           }
-          const n = Number(next.replace(',', '.'));
-          if (Number.isFinite(n)) onChange(n);
+          // Shared comma-decimal tolerant parse (CW-484). An unparseable keystroke
+          // keeps the last committed value instead of committing 0.
+          const n = parseDecimal(next);
+          if (n != null) onChange(n);
         }}
         className="rounded-lg border border-border-strong bg-surface px-3 py-2.5 text-base text-text-primary"
         placeholderTextColor={theme.textMuted}
@@ -247,6 +244,13 @@ export function NutritionSettingsForm({ initial }: { initial: NutritionSettingsS
   }
 
   const dirty = useMemo(() => !settingsFormEquals(form, baseline), [form, baseline]);
+  // The save payload de-duplicates quick-add volumes, so a typed duplicate would
+  // otherwise leave Save silently greyed out (`dirty` false) with no explanation.
+  // Surface the reason instead, and block Save on it (CW-542).
+  const quickAddError = useMemo(
+    () => quickAddVolumesError([...form.quickAddVolumes]),
+    [form.quickAddVolumes],
+  );
   const tdee = computeTdee(form);
   const targetCalories = computeTargetCalories(form);
 
@@ -303,6 +307,11 @@ export function NutritionSettingsForm({ initial }: { initial: NutritionSettingsS
       hapticError();
       return;
     }
+    if (quickAddError) {
+      setFormError(quickAddError);
+      hapticError();
+      return;
+    }
     try {
       const payload = toNutritionSettingsPayload(form);
       const saved = await saveMutation.mutateAsync(payload);
@@ -337,7 +346,7 @@ export function NutritionSettingsForm({ initial }: { initial: NutritionSettingsS
         <Button
           label={saveMutation.isPending ? 'Saving…' : 'Save'}
           onPress={() => void onSave()}
-          disabled={!dirty || saveMutation.isPending}
+          disabled={!dirty || quickAddError != null || saveMutation.isPending}
         />
       </View>
 
@@ -345,7 +354,7 @@ export function NutritionSettingsForm({ initial }: { initial: NutritionSettingsS
       {successMessage ? <Text className="mt-3 text-sm text-brand">{successMessage}</Text> : null}
       {saveMutation.isPending ? (
         <View className="mt-3 flex-row items-center gap-2">
-          <ActivityIndicator color={theme.brandOnSurface} />
+          <Spinner />
           <Text className="text-sm text-text-muted">Saving and refreshing fueling plans…</Text>
         </View>
       ) : null}
@@ -682,13 +691,18 @@ export function NutritionSettingsForm({ initial }: { initial: NutritionSettingsS
             ])
           }
         />
+        {quickAddError ? (
+          <Text className="px-4 py-3 text-xs text-danger" testID="nutrition-quick-add-error">
+            {quickAddError}
+          </Text>
+        ) : null}
       </SectionCard>
 
       <View className="mt-6">
         <Button
           label={saveMutation.isPending ? 'Saving…' : 'Save nutrition settings'}
           onPress={() => void onSave()}
-          disabled={!dirty || saveMutation.isPending}
+          disabled={!dirty || quickAddError != null || saveMutation.isPending}
         />
       </View>
     </ScrollView>

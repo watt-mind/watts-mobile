@@ -9,15 +9,8 @@ import { AppSymbol } from '@/src/components/AppSymbol';
 import { useRecentWellness } from '@/src/features/profile/useRecentWellness';
 import type { RecoveryContextItem } from '@/src/features/recovery/types';
 import { WellnessOverviewSheet } from '@/src/features/wellness/WellnessOverviewSheet';
+import { localDateYmd } from '@/src/lib/date';
 import { useThemeColors } from '@/src/theme/useThemeColors';
-
-function localTodayKey(): string {
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, '0');
-  const d = String(now.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
 
 function staleCaption(
   hasCurrentDayWellness: boolean,
@@ -25,7 +18,7 @@ function staleCaption(
 ): string | null {
   if (hasCurrentDayWellness || !latestWellnessDate) return null;
   const day = latestWellnessDate.slice(0, 10);
-  const today = localTodayKey();
+  const today = localDateYmd();
   if (day === today) return null;
 
   const latest = new Date(`${day}T12:00:00`);
@@ -148,7 +141,7 @@ export function WellnessSection({
     : null;
   const overviewDate = profile?.latestWellnessDate
     ? profile.latestWellnessDate.slice(0, 10)
-    : localTodayKey();
+    : localDateYmd();
   const hasRecoveryItems = Boolean(recoveryItems?.length);
 
   return (

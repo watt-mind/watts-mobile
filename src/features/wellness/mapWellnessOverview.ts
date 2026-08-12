@@ -1,4 +1,7 @@
+import { kgToDisplayWeight, weightUnitLabel } from '@/src/features/profile/mapProfile';
 import { calculateTrend } from '@/src/features/profile/trend';
+import type { WeightUnits } from '@/src/features/profile/types';
+import { localDateYmd } from '@/src/lib/date';
 
 import {
   isPlausibleRestingHr,
@@ -23,14 +26,6 @@ function asFiniteNumber(value: unknown): number | null {
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== 'object') return null;
   return value as Record<string, unknown>;
-}
-
-function localTodayKey(): string {
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, '0');
-  const d = String(now.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
 }
 
 function dateKey(raw: unknown): string | null {
@@ -140,12 +135,20 @@ export function heuristicCoachNote(input: {
   return 'Listen to your body and adjust training intensity based on how you feel throughout your session.';
 }
 
-export function mapWellnessOverview(json: unknown): WellnessOverview | null {
+export type WellnessOverviewUnits = {
+  /** Athlete display preference; the API always stores/returns kilograms. */
+  weightUnits: WeightUnits;
+};
+
+export function mapWellnessOverview(
+  json: unknown,
+  units: WellnessOverviewUnits = { weightUnits: 'Kilograms' },
+): WellnessOverview | null {
   if (json == null) return null;
   const root = asRecord(json);
   if (!root) return null;
 
-  const date = dateKey(root.date) || dateKey(root.wellnessDate) || localTodayKey();
+  const date = dateKey(root.date) || dateKey(root.wellnessDate) || localDateYmd();
 
   const trendsRoot = asRecord(root.trends) || {};
   const hrvTrend = parseTrend(trendsRoot.hrv);
@@ -224,7 +227,14 @@ export function mapWellnessOverview(json: unknown): WellnessOverview | null {
       recoveryTrendPercent,
     ),
     metric('readiness', 'Readiness', readiness != null ? Math.round(readiness) : null, '', null),
-    metric('weight', 'Weight', weight != null ? Number(weight.toFixed(1)) : null, '', null),
+    // Plausibility runs on kg (ratio comparison, unit-invariant); only display converts.
+    metric(
+      'weight',
+      'Weight',
+      kgToDisplayWeight(weight, units.weightUnits),
+      weightUnitLabel(units.weightUnits),
+      null,
+    ),
     metric('stress', 'Stress', stress != null ? Math.round(stress) : null, '', null),
     metric('mood', 'Mood', mood != null ? Math.round(mood) : null, '', null),
     metric('spo2', 'SpO2', spo2 != null ? Math.round(spo2) : null, '%', null),
@@ -267,7 +277,7 @@ export function mapWellnessOverview(json: unknown): WellnessOverview | null {
   return {
     id: typeof root.id === 'string' ? root.id : null,
     date,
-    isStale: date !== localTodayKey(),
+    isStale: date !== localDateYmd(),
     metrics,
     barSeries,
     coachNote,

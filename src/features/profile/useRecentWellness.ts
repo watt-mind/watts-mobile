@@ -9,6 +9,7 @@ import {
 
 import { fetchDashboardProfile, fetchWellnessTrend } from './dashboardApi';
 import { calculateTrend } from './trend';
+import { priorWellnessHistory, wellnessTrendWindow } from './wellnessTrendWindow';
 
 export const DASHBOARD_PROFILE_KEY = ['profile', 'dashboard'] as const;
 
@@ -21,20 +22,12 @@ export function useRecentWellness() {
 
   const profile = profileQuery.data;
 
-  // 7-day range calculation
+  // 7-day range calculation — look back 8 local days so we have 7 prior days
+  // excluding the latest one.
   const latestDate = profile?.latestWellnessDate
     ? new Date(profile.latestWellnessDate)
     : new Date();
-
-  // Reset hours to get full UTC boundaries
-  const endD = new Date(latestDate);
-  endD.setUTCHours(23, 59, 59, 999);
-  const startD = new Date(latestDate);
-  startD.setUTCDate(startD.getUTCDate() - 8); // Look back 8 days so we have 7 prior days excluding today
-  startD.setUTCHours(0, 0, 0, 0);
-
-  const startDateStr = startD.toISOString();
-  const endDateStr = endD.toISOString();
+  const { latestDateKey, startDateStr, endDateStr } = wellnessTrendWindow(latestDate);
 
   const trendQuery = useQuery({
     queryKey: ['wellness', 'trend', startDateStr, endDateStr] as const,
@@ -44,10 +37,9 @@ export function useRecentWellness() {
   });
 
   const trendData = trendQuery.data || [];
-  const latestDateKey = latestDate.toISOString().split('T')[0] || '';
 
   // Filter out latest day's wellness from history to get prior baseline
-  const priorHistory = trendData.filter((d) => d.date !== latestDateKey);
+  const priorHistory = priorWellnessHistory(trendData, latestDateKey);
 
   const recentSleep = isPlausibleSleepHours(profile?.recentSleep) ? profile!.recentSleep : null;
   const restingHr = isPlausibleRestingHr(profile?.restingHr) ? profile!.restingHr : null;

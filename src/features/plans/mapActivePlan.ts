@@ -1,4 +1,4 @@
-import { localDateKey } from '@/src/features/today/weekGlance';
+import { dateKeysInRange, localDateKey } from '@/src/lib/date';
 
 import { humanizeBlockType } from './formatPlanCopy';
 import type {
@@ -14,7 +14,7 @@ function dateKey(value: string | Date | null | undefined): string | null {
   return localDateKey(value);
 }
 
-function todayKey(): string {
+function currentDateKey(): string {
   return localDateKey(new Date()) ?? '';
 }
 
@@ -77,7 +77,7 @@ export function flattenPlanWeeks(blocks: PlanBlockApi[]): PlanWeekShell[] {
 /** Pick the week containing today; else nearest upcoming; else last past week. */
 export function selectCurrentWeek(
   blocks: PlanBlockApi[],
-  nowKey: string = todayKey(),
+  nowKey: string = currentDateKey(),
 ): PlanWeekShell | null {
   const weeks = flattenPlanWeeks(blocks);
   if (weeks.length === 0) return null;
@@ -91,6 +91,26 @@ export function selectCurrentWeek(
   if (upcoming[0]) return upcoming[0];
 
   return weeks[weeks.length - 1] ?? null;
+}
+
+/**
+ * Index of the week to treat as "current": prefer the plan's own `currentWeek`
+ * (id match), but fall back to whichever week's date range actually contains
+ * today. A plan that ended weeks ago has no `currentWeek`, and without this
+ * fallback the view (and the "This week" jump affordance) silently defaults
+ * to the plan's last historical week instead of reflecting today's date.
+ *
+ * Returns `-1` when no week matches; callers clamp that themselves (CW-285).
+ */
+export function findCurrentWeekIndex(
+  shell: Pick<ActivePlanShell, 'weeks' | 'currentWeek'> | null | undefined,
+  todayKey: string = currentDateKey(),
+): number {
+  if (!shell) return -1;
+  const byId = shell.weeks.findIndex((w) => w.id === shell.currentWeek?.id);
+  if (byId >= 0) return byId;
+  if (!todayKey) return -1;
+  return shell.weeks.findIndex((w) => weekContainsDate(w, todayKey));
 }
 
 export function mapActivePlanShell(
@@ -146,21 +166,10 @@ export function filterPlannedToWeek<T extends { date?: string | null }>(
   });
 }
 
+/** Inclusive local day keys spanned by a plan week shell. */
 export function weekDateKeys(week: PlanWeekShell | null): string[] {
   if (!week?.startDateKey) return [];
-  const start = week.startDateKey;
-  const end = week.endDateKey ?? start;
-  const keys: string[] = [];
-  const cursor = new Date(`${start}T12:00:00`);
-  const endDate = new Date(`${end}T12:00:00`);
-  while (cursor <= endDate && keys.length < 14) {
-    const y = cursor.getFullYear();
-    const m = String(cursor.getMonth() + 1).padStart(2, '0');
-    const d = String(cursor.getDate()).padStart(2, '0');
-    keys.push(`${y}-${m}-${d}`);
-    cursor.setDate(cursor.getDate() + 1);
-  }
-  return keys;
+  return dateKeysInRange(week.startDateKey, week.endDateKey ?? week.startDateKey);
 }
 
 /** Percent along the season bar for “today”, or null if outside the plan. */

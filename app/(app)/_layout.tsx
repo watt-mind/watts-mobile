@@ -9,6 +9,15 @@ import { OfflineWellnessFlush } from '@/src/features/log/OfflineWellnessFlush';
 import { ScanMealQuickActionBridge } from '@/src/linking/ScanMealQuickActionBridge';
 import { useThemeColors } from '@/src/theme/useThemeColors';
 
+/**
+ * Keep the tabs under every pushed (app) route so a direct push into this stack
+ * — e.g. activation's "Set up Health Sync" → /(app)/health-sync — always has a
+ * back target instead of stranding the athlete on a lone screen.
+ */
+export const unstable_settings = {
+  anchor: '(tabs)',
+};
+
 /** The health screen is named for the platform integration the athlete recognises. */
 const HEALTH_PLATFORM_TITLE = Platform.OS === 'ios' ? 'Apple Health' : 'Health Connect';
 

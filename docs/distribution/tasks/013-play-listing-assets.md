@@ -1,6 +1,6 @@
 # 013 — Play Store listing assets
 
-**Area:** listing · **Priority:** medium · **Status:** open
+**Area:** listing · **Priority:** medium · **Status:** done
 
 **Depends on:** [011](./011-play-console-app.md); screenshots need a **release / Internal testing** AAB ([015](./015-android-production-build.md))
 
@@ -14,9 +14,9 @@ Fill the main store listing Google requires for testing tracks and production. C
 |-------|----------------|--------|
 | Short description | Companion positioning; no diagnosis language | done |
 | Full description | Reuse ASC voice + “not a medical device” disclaimer ([store-privacy-checklist.md](../../store-privacy-checklist.md)) | done |
-| App icon 512×512 | From Coach Watts mark / `assets/images/icon.png` pipeline (`dist/play-listing/app-icon-512x512.png`) | prepared |
-| Feature graphic 1024×500 | Real hero (`dist/play-listing/feature-graphic-1024x500.png`) | prepared |
-| Phone screenshots | From **release / Internal** build (`dist/play-listing/01-today-insight.png` .. `06-coach.png` & framed set) | prepared |
+| App icon 512×512 | From Coach Watts mark / `assets/images/icon.png` pipeline (`dist/play-listing/app-icon-512x512.png`) | done |
+| Feature graphic 1024×500 | Real hero (`dist/play-listing/feature-graphic-1024x500.png`) | done |
+| Phone screenshots | From **release / Internal** build (`dist/play-listing/01-today-insight.png` .. `06-coach.png` & framed set) | done |
 | Contact / support | Align with `support@coachwatts.com` | done |
 
 Skip tablet screenshots for v1 (phone-first; don’t claim tablet support).
@@ -28,9 +28,9 @@ Skip tablet screenshots for v1 (phone-first; don’t claim tablet support).
 [x] Internal/release AAB installed
 [x] Short + full description pasted; matches Data safety (no diagnosis language) — [012](./012-play-data-safety-and-content.md)
 [x] Graphics prepared in dist/play-listing/ (Icon 512×512, feature graphic 1024×500, phone screenshots)
-[ ] Upload graphics via Play Console file picker
-[ ] Contact email / support verified
-[ ] Tell eng when done → unlock [017](./017-play-production-submit.md)
+[x] Upload graphics via Play Console file picker (Watt Mind account; 2026-08-09 user sign-off on screenshots)
+[x] Contact email / support verified
+[x] Tell eng when done → unlock [017](./017-play-production-submit.md)
 ```
 
 ## Steps (tracking)

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { ActivityListItem, PlannedListItem } from '@/src/features/activity/types';
-import { localDateKey } from '@/src/features/today/weekGlance';
+import { localDateKey } from '@/src/lib/date';
 
 import {
   ACTIVITY_GLANCE_WEEK_COUNT,

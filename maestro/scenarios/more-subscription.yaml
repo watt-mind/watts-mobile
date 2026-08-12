@@ -1,0 +1,34 @@
+# Subscription / billing screen — assumes authenticated session. Read-only:
+# opens the screen and asserts its rendered chrome. Never taps a buy button.
+#
+# No fixture needed: the row and the screen render on every tier, including FREE.
+#
+# `subscription-restore` (and the plan chooser) mount only when
+# canAcquireNativeSubscription() is true, which requires the official hosted
+# instance (https://coachwatts.com) — the e2e harness runs against
+# http://<host>:3199, so they are asserted optionally, not as a gate.
+# The hard assertion is `subscription-billing-support`, which is unconditional.
+appId: com.coachwatts.app
+---
+- runFlow: ../subflows/tap-tab-more.yaml
+- scrollUntilVisible:
+    element:
+      id: more-subscription
+    direction: DOWN
+    timeout: 15000
+- tapOn:
+    id: more-subscription
+- extendedWaitUntil:
+    visible:
+      id: subscription-screen
+    timeout: 20000
+- scrollUntilVisible:
+    element:
+      id: subscription-billing-support
+    direction: DOWN
+    timeout: 15000
+- assertVisible:
+    id: subscription-billing-support
+- assertVisible:
+    id: subscription-restore
+    optional: true

@@ -2,19 +2,12 @@
 import { useQuery } from '@tanstack/react-query';
 import { Stack, type Href, router } from 'expo-router';
 import { useMemo, useState } from 'react';
-import {
-  ActivityIndicator,
-  Platform,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  Text,
-  View,
-} from 'react-native';
+import { Platform, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-screens/experimental';
 
 import { Button } from '@/src/components/Button';
 import { ListSkeleton } from '@/src/components/Skeleton';
+import { Spinner } from '@/src/components/Spinner';
 import { formatLedgerStatusLabel } from '@/src/features/health/ledgerHelpers';
 import {
   syncUnsyncedWorkouts,
@@ -24,6 +17,7 @@ import {
   isUnsyncedRecentStatus,
   type RecentWorkoutRow,
 } from '@/src/features/health/recentWorkoutRows';
+import { resolveRecentWorkoutAction } from '@/src/features/health/recentWorkoutActions';
 import { listRecentPlatformWorkoutsWithStatus } from '@/src/features/health/recentWorkouts';
 import type { SyncLedgerStatus } from '@/src/features/health/types';
 import { useHealthSyncPreferences } from '@/src/features/health/useHealthSyncPreferences';
@@ -93,8 +87,22 @@ export default function HealthRecentWorkoutsScreen() {
         : 'Could not load workouts'
       : null;
 
-  const uploadsEnabled = preferences.syncEnabled && preferences.syncWorkouts;
+  const uploadAction = resolveRecentWorkoutAction(preferences);
+  const uploadsEnabled = uploadAction.kind === 'upload';
   const platformLabel = Platform.OS === 'ios' ? 'Apple Health' : 'Health Connect';
+
+  /**
+   * Send the athlete to the switch that unblocks uploading.
+   *
+   * The upload controls call this instead of rendering `disabled`, which
+   * produced a completely silent tap — no haptic, no spinner, no message
+   * (CW-573).
+   */
+  const handleEnableSync = (reason: string) => {
+    hapticLight();
+    setActionError(reason);
+    router.push(APP_HREFS.settingsHealth as Href);
+  };
 
   const unsyncedCount = useMemo(
     () => rows.filter((row) => isUnsyncedRecentStatus(row.status)).length,
@@ -183,13 +191,21 @@ export default function HealthRecentWorkoutsScreen() {
           ) : null}
           {unsyncedCount > 0 ? (
             <View className="mt-3">
-              <Button
-                label={`Sync all (${unsyncedCount})`}
-                onPress={() => void handleSyncAll()}
-                loading={syncingAll}
-                variant="secondary"
-                disabled={!uploadsEnabled || busyId != null}
-              />
+              {uploadAction.kind === 'upload' ? (
+                <Button
+                  label={`Sync all (${unsyncedCount})`}
+                  onPress={() => void handleSyncAll()}
+                  loading={syncingAll}
+                  variant="secondary"
+                  disabled={busyId != null}
+                />
+              ) : (
+                <Button
+                  label={uploadAction.label}
+                  onPress={() => handleEnableSync(uploadAction.reason)}
+                  variant="secondary"
+                />
+              )}
             </View>
           ) : null}
           {actionError ? (
@@ -254,20 +270,30 @@ export default function HealthRecentWorkoutsScreen() {
                     </View>
                     <View className="mt-3">
                       {isBusy ? (
-                        <ActivityIndicator color={theme.brandOnSurface} />
+                        <Spinner />
+                      ) : uploadAction.kind !== 'upload' &&
+                        (unsynced || row.status === 'synced') ? (
+                        // Never render an inert Sync button: tapping it was a
+                        // silent no-op, so the prerequisite becomes the action
+                        // (CW-573).
+                        <Button
+                          label={uploadAction.label}
+                          variant="secondary"
+                          onPress={() => handleEnableSync(uploadAction.reason)}
+                        />
                       ) : unsynced ? (
                         <Button
                           label="Sync"
                           variant="secondary"
                           onPress={() => void handleSyncOne(row, true)}
-                          disabled={!uploadsEnabled || syncingAll}
+                          disabled={syncingAll}
                         />
                       ) : row.status === 'synced' ? (
                         <Button
                           label="Resync"
                           variant="secondary"
                           onPress={() => void handleSyncOne(row, true)}
-                          disabled={!uploadsEnabled || syncingAll}
+                          disabled={syncingAll}
                         />
                       ) : null}
                     </View>

@@ -1,7 +1,6 @@
 /* Hallmark · genre: modern-minimal · design-system: docs/DESIGN.md · designed-as-app */
 import { useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   Image,
   InteractionManager,
@@ -36,16 +35,19 @@ import { BarcodeScannerModal } from '@/src/features/nutrition/BarcodeScannerModa
 import { PortionCalculatorModal } from '@/src/features/nutrition/PortionCalculatorModal';
 import { Button } from '@/src/components/Button';
 import { AppSymbol } from '@/src/components/AppSymbol';
+import { Spinner } from '@/src/components/Spinner';
 import {
   getMealHistory,
   saveMealToHistory,
   type UserMealHistoryItem,
 } from '@/src/features/nutrition/mealHistoryStorage';
+import { localDateYmd } from '@/src/lib/date';
 import {
   emptyQuickLogForm,
   formatMacroGrams,
-  localDateYmd,
   quickLogHasContent,
+  quickLogValidationError,
+  toMealHistoryEntry,
   toNutritionUploadPayload,
 } from '@/src/features/nutrition/mapNutrition';
 import {
@@ -62,6 +64,23 @@ import {
   type NutritionQuickLogForm,
 } from '@/src/features/nutrition/types';
 import { useLogNutritionItem, useTodayNutritionQuery } from '@/src/features/nutrition/useNutrition';
+import {
+  deviceMediaLibraryPort,
+  mediaLibraryAvailable,
+} from '@/src/features/nutrition/mediaLibraryPort';
+import {
+  resolveSaveToLibraryFeedback,
+  saveMealPhotoToLibrary,
+} from '@/src/features/nutrition/saveMealPhotoToLibrary';
+import {
+  loadPhotoMealSettings,
+  setSavePhotoToLibrary,
+} from '@/src/features/nutrition/photoMealSettings';
+import {
+  type PhotoCaptureSettings,
+  resolvePhotoCaptureSettings,
+  resolvePhotoSourceLaunch,
+} from '@/src/features/nutrition/photoSourceLaunch';
 import { usePhotoMealSettings } from '@/src/features/nutrition/usePhotoMealSettings';
 import { NutritionTargetsCard } from '@/src/features/nutrition/NutritionTargetsCard';
 import { hapticError, hapticLight, hapticSuccess } from '@/src/lib/haptics';
@@ -522,6 +541,8 @@ export function LogMealSheet({
   const [historyItems, setHistoryItems] = useState<UserMealHistoryItem[]>([]);
   const [showMacros, setShowMacros] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Non-blocking "Save Photos to Library" outcome — never blocks meal logging. */
+  const [libraryNotice, setLibraryNotice] = useState<string | null>(null);
   const [capturedPhoto, setCapturedPhoto] = useState<CapturedPhoto | null>(null);
   const [estimateConfidence, setEstimateConfidence] = useState<EstimateConfidence | undefined>();
   const [estimateInsight, setEstimateInsight] = useState<string | undefined>();
@@ -627,6 +648,7 @@ export function LogMealSheet({
     setForm(emptyQuickLogForm());
     setShowMacros(false);
     setError(null);
+    setLibraryNotice(null);
     setCapturedPhoto(null);
     setEstimateConfidence(undefined);
     setEstimateInsight(undefined);
@@ -780,6 +802,14 @@ export function LogMealSheet({
       setError('Enter a meal name or select a history item.');
       return;
     }
+    // Same rules as the edit sheet (CW-349): unparseable or negative macros are
+    // rejected here rather than posted as missing/negative values.
+    const validationError = quickLogValidationError(form);
+    if (validationError) {
+      hapticError();
+      setError(validationError);
+      return;
+    }
     setError(null);
     const mealName = form.name;
     try {
@@ -787,17 +817,8 @@ export function LogMealSheet({
       payload.date = selectedDateYmd;
       await logMutation.mutateAsync(payload);
 
-      const numCal = Number(form.calories);
-      const numProt = Number(form.protein);
-      const numCarbs = Number(form.carbs);
-      const numFat = Number(form.fat);
-      const updatedHistory = await saveMealToHistory({
-        name: form.name,
-        calories: Number.isFinite(numCal) && numCal > 0 ? numCal : undefined,
-        protein: Number.isFinite(numProt) && numProt > 0 ? numProt : undefined,
-        carbs: Number.isFinite(numCarbs) && numCarbs > 0 ? numCarbs : undefined,
-        fat: Number.isFinite(numFat) && numFat > 0 ? numFat : undefined,
-      });
+      // Same parsing as the upload above (CW-519) — raw Number() dropped comma decimals.
+      const updatedHistory = await saveMealToHistory(toMealHistoryEntry(form));
       setHistoryItems(updatedHistory);
 
       await enterLogged(mealName);
@@ -858,28 +879,32 @@ export function LogMealSheet({
       return;
     }
 
-    if (options?.saveCapturedToLibrary && photo.uri) {
-      try {
-        // Optional native dependency — missing binary should not break meal capture.
-        // eslint-disable-next-line @typescript-eslint/no-require-imports -- graceful missing-binary fallback
-        const MediaLibrary = require('expo-media-library');
-        if (MediaLibrary?.requestPermissionsAsync && MediaLibrary?.saveToLibraryAsync) {
-          const perm = await MediaLibrary.requestPermissionsAsync();
-          if (perm.granted) {
-            await MediaLibrary.saveToLibraryAsync(photo.uri);
-          }
-        }
-      } catch {
-        // Silently ignore if MediaLibrary module is missing or permission fails
+    // Saving to the camera roll is a side effect of capture: it may report a
+    // problem, but it must never stop the meal from being analyzed/logged.
+    if (options?.saveCapturedToLibrary) {
+      const outcome = await saveMealPhotoToLibrary(
+        {
+          enabled: true,
+          uri: photo.uri,
+          supported: mediaLibraryAvailable,
+        },
+        deviceMediaLibraryPort,
+      );
+      const feedback = resolveSaveToLibraryFeedback(outcome);
+      setLibraryNotice(feedback.notice);
+      if (feedback.disableSetting) {
+        // The toggle can no longer do what it promises — stop lying about it.
+        void setSavePhotoToLibrary(false);
       }
     }
 
     await analyzeCapturedPhoto(photo);
   };
 
-  const handleTakePhoto = async () => {
+  const handleTakePhoto = async (options?: { saveToLibrary?: boolean }) => {
     hapticLight();
     setError(null);
+    setLibraryNotice(null);
     try {
       const ImagePicker = await import('expo-image-picker');
       const permission = await ImagePicker.requestCameraPermissionsAsync();
@@ -899,7 +924,9 @@ export function LogMealSheet({
         return;
       }
 
-      await beginAnalyzeFromPickerAsset(result.assets[0], { saveCapturedToLibrary: saveToLibrary });
+      await beginAnalyzeFromPickerAsset(result.assets[0], {
+        saveCapturedToLibrary: options?.saveToLibrary ?? saveToLibrary,
+      });
     } catch (err) {
       hapticError();
       setError(friendlyError(err, 'Could not analyze meal photo'));
@@ -946,17 +973,27 @@ export function LogMealSheet({
     });
   };
 
-  const handleChoosePhotoSource = () => {
+  /**
+   * `override` carries settings read straight from storage (see the auto-open
+   * effect below): the rendered `sourceMode`/`saveToLibrary` can still be the
+   * pre-hydration defaults on the very first render.
+   */
+  const handleChoosePhotoSource = (override?: Partial<PhotoCaptureSettings> | null) => {
     hapticLight();
-    if (sourceMode === 'camera') {
-      void handleTakePhoto();
-    } else if (sourceMode === 'library') {
+    const settings = resolvePhotoCaptureSettings({ sourceMode, saveToLibrary }, override);
+    const launch = resolvePhotoSourceLaunch(settings.sourceMode);
+    if (launch === 'camera') {
+      void handleTakePhoto({ saveToLibrary: settings.saveToLibrary });
+    } else if (launch === 'library') {
       void handlePickPhoto();
     } else {
       Alert.alert('Photo Estimate with AI', 'Choose photo source to analyze your meal:', [
         {
           text: 'Take Photo',
-          onPress: () => launchPhotoSourceAfterAlert(() => void handleTakePhoto()),
+          onPress: () =>
+            launchPhotoSourceAfterAlert(
+              () => void handleTakePhoto({ saveToLibrary: settings.saveToLibrary }),
+            ),
         },
         {
           text: 'Choose from Library',
@@ -979,7 +1016,17 @@ export function LogMealSheet({
           if (cancelled) return;
           resetSheetState();
           void loadHistory();
-          if (autoOpenPicker) handleChoosePhotoSource();
+          if (autoOpenPicker) {
+            // Read the saved photo preference from storage rather than relying
+            // on the first render's values: the store only starts hydrating
+            // once the component has mounted, so a quick action launched from
+            // a cold start would otherwise always fall back to "Ask every
+            // time" — exactly the fast path the preference exists for.
+            void loadPhotoMealSettings().then((settings) => {
+              if (cancelled) return;
+              handleChoosePhotoSource(settings);
+            });
+          }
         },
         autoOpenPicker ? AUTO_OPEN_PICKER_DELAY_MS : 0,
       );
@@ -1005,6 +1052,7 @@ export function LogMealSheet({
     setForm(emptyQuickLogForm());
     setShowMacros(false);
     setError(null);
+    setLibraryNotice(null);
     setCapturedPhoto(null);
     setEstimateConfidence(undefined);
     setEstimateInsight(undefined);
@@ -1091,7 +1139,7 @@ export function LogMealSheet({
                 <View className="absolute inset-0 rounded-xl border-2 border-brand/40 bg-brand/10" />
               </View>
             ) : null}
-            <ActivityIndicator size="large" color={theme.brandOnSurface} />
+            <Spinner size="large" />
             <Text className="mt-3 text-base font-semibold text-text-primary">
               {ANALYZING_MESSAGES[analyzingStep]}
             </Text>
@@ -1170,6 +1218,9 @@ export function LogMealSheet({
 
             <MacroFields form={form} themeMuted={theme.textMuted} update={update} />
 
+            {libraryNotice ? (
+              <Text className="mb-3 text-xs text-modify">{libraryNotice}</Text>
+            ) : null}
             {error ? <Text className="mb-3 text-xs text-danger">{error}</Text> : null}
 
             <Button
@@ -1211,6 +1262,9 @@ export function LogMealSheet({
               <Text className="mt-2 max-w-sm text-center text-sm leading-5 text-text-muted">
                 Coach will estimate the meal, then you can review every value before saving.
               </Text>
+              {libraryNotice ? (
+                <Text className="mt-4 text-center text-sm text-modify">{libraryNotice}</Text>
+              ) : null}
               {error ? <Text className="mt-4 text-center text-sm text-danger">{error}</Text> : null}
               <View className="mt-6 w-full">
                 <Button
@@ -1347,7 +1401,7 @@ export function LogMealSheet({
                   {/* Search Loading State */}
                   {isSearchingFood ? (
                     <View className="items-center justify-center py-8">
-                      <ActivityIndicator size="small" color={theme.brandOnSurface} />
+                      <Spinner size="small" />
                       <Text className="mt-2 text-xs font-medium text-text-muted">
                         Searching global food database...
                       </Text>
@@ -1557,6 +1611,9 @@ export function LogMealSheet({
                     <MacroFields form={form} themeMuted={theme.textMuted} update={update} />
                   ) : null}
 
+                  {libraryNotice ? (
+                    <Text className="mb-3 text-xs text-modify">{libraryNotice}</Text>
+                  ) : null}
                   {error ? <Text className="mb-3 text-xs text-danger">{error}</Text> : null}
                 </>
               )}

@@ -103,7 +103,7 @@ RevenueCat is the selected Apple/Google subscription integration. Coach Watts se
 | Workstream | Task | Status |
 |------------|------|--------|
 | RevenueCat ownership, plan, restore policy, store connections | [018](./distribution/tasks/018-revenuecat-project.md) | in-progress (Apple + Play apps/catalog mapped; Play service account, Stripe, ownership/plan open) |
-| Apple Paid Apps Agreement/tax/banking; Google merchant profile; prices/products | [019](./distribution/tasks/019-paid-agreements-and-products.md) | in-progress (ASC Paid Apps Pending User Info on bank screening; Play bank verify + 15% enrolled; draft catalogs) |
+| Apple Paid Apps Agreement/tax/banking; Google merchant profile; prices/products | [019](./distribution/tasks/019-paid-agreements-and-products.md) | in-progress (ASC bank/legal screening **cleared 2026-08-09**; Play bank verify + 15% enrolled; draft catalogs) |
 | `coach-wattz` provider-neutral persistence, lifecycle, Stripe backfill, Bearer reconcile | [020](./distribution/tasks/020-subscription-backend.md) | in-progress |
 | Expo RevenueCat SDK + hosted purchase/restore/status/manage UI | [021](./distribution/tasks/021-native-subscription-experience.md) | in-progress |
 | Sandbox/TestFlight/Internal lifecycle matrix + IAP review | [022](./distribution/tasks/022-subscription-store-test-review.md) | open |

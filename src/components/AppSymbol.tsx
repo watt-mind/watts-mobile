@@ -1,5 +1,7 @@
+import { useFonts } from 'expo-font';
 import { SymbolView, type AndroidSymbol, type SFSymbol } from 'expo-symbols';
-import { Text, type StyleProp, type ViewStyle } from 'react-native';
+import materialSymbolsRegular from 'expo-symbols/androidWeights/regular';
+import { Platform, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 
 /**
  * SF Symbol → Material Symbol for Android/web.
@@ -57,6 +59,7 @@ const SF_TO_MD = {
   leaf: 'eco',
   'leaf.fill': 'eco',
   'flame.fill': 'local_fire_department',
+  'fork.knife': 'restaurant',
   'dumbbell.fill': 'fitness_center',
   'drop.halffull': 'opacity',
   'gauge.with.dots.needle.33percent': 'speed',
@@ -96,19 +99,82 @@ export function AppSymbol({
   style?: StyleProp<ViewStyle>;
 }) {
   const android = md ?? (SF_TO_MD as Record<string, AndroidSymbol | undefined>)[sf];
+  const name = android ? { ios: sf, android, web: android } : sf;
+  // Stand-in for a glyph, so it obeys the same fixed icon slot rather than Dynamic Type.
+  const fallbackNode =
+    fallback != null ? (
+      <Text allowFontScaling={false} style={{ fontSize: Math.max(10, size - 2), color: tintColor }}>
+        {fallback}
+      </Text>
+    ) : undefined;
+
+  if (Platform.OS === 'ios') {
+    return (
+      <SymbolView
+        name={name}
+        size={size}
+        tintColor={tintColor}
+        style={[{ width: size, height: size }, style]}
+        fallback={fallbackNode}
+      />
+    );
+  }
+
+  if (!android) return <View style={[{ width: size, height: size }, style]}>{fallbackNode}</View>;
+
+  return <MaterialGlyph symbol={android} size={size} tintColor={tintColor} style={style} />;
+}
+
+/**
+ * Android/web have no SF Symbols, and expo-symbols' `SymbolView` paints the Material glyph
+ * as a `<Text>` it never opts out of Dynamic Type — inside a box it sizes from the same
+ * `size` prop. At an OS font scale > 1 the glyph therefore always renders larger than the
+ * box that positions it, and Android clips children to that box: the icon loses its right
+ * and bottom edges and its visible mass skews up-left, off-centre in the circular buttons
+ * (the CW-303 symptom). No prop combination fixes that from outside, so paint the glyph
+ * here instead — icons are chrome, not prose, and must stay the size the layout reserved.
+ *
+ * Geometry: Material Symbols glyphs are 1em advance with their ink centred 0.5em above the
+ * baseline, and `lineHeight === fontSize` puts that baseline 1em below the text top, so the
+ * ink lands dead centre of a size×size box. Icon names double as font ligatures, which is
+ * why the symbol name is rendered verbatim.
+ */
+function MaterialGlyph({
+  symbol,
+  size,
+  tintColor,
+  style,
+}: {
+  symbol: AndroidSymbol;
+  size: number;
+  tintColor?: string;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const [loaded] = useFonts({ [materialSymbolsRegular.name]: materialSymbolsRegular.font });
+
   return (
-    <SymbolView
-      name={android ? { ios: sf, android, web: android } : sf}
-      size={size}
-      tintColor={tintColor}
-      // Pin the glyph box to size×size: without it the Android Material Symbol
-      // view keeps intrinsic padding and sits off-center in circular buttons (CW-303).
-      style={[{ width: size, height: size }, style]}
-      fallback={
-        fallback != null ? (
-          <Text style={{ fontSize: Math.max(10, size - 2), color: tintColor }}>{fallback}</Text>
-        ) : undefined
-      }
-    />
+    <View style={[{ width: size, height: size }, style]}>
+      {loaded ? (
+        <Text
+          allowFontScaling={false}
+          // The ligature source text is readable ("photo_camera"), unlike the private-use
+          // codepoint it replaces — keep it out of the tree so TalkBack announces the
+          // control's own label and not the icon's name.
+          accessible={false}
+          importantForAccessibility="no"
+          aria-hidden
+          style={{
+            width: size,
+            fontFamily: materialSymbolsRegular.name,
+            fontSize: size,
+            lineHeight: size,
+            textAlign: 'center',
+            color: tintColor,
+          }}
+        >
+          {symbol}
+        </Text>
+      ) : null}
+    </View>
   );
 }

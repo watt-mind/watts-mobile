@@ -12,7 +12,11 @@ import type {
 // to a permission, which is what makes an unmappable entry (notably a *read* on
 // ExerciseRoute) a compile error instead of a runtime InvalidRecordType that
 // aborts the whole permission request.
-import type { BackgroundAccessPermission, Permission } from 'react-native-health-connect';
+import type {
+  BackgroundAccessPermission,
+  Permission,
+  RecordType,
+} from 'react-native-health-connect';
 
 /** HealthKit types for wellness + workout sync (read-only). */
 export const HEALTHKIT_SYNC_READ_TYPES = [
@@ -113,6 +117,31 @@ const OPTIONAL_HEALTH_CONNECT_RECORD_TYPES: readonly string[] = ['BackgroundAcce
 
 type HealthConnectPermissionLike = { accessType?: string; recordType?: string };
 
+/** Real record types in the read set — everything except the pseudo permission entries. */
+export const HEALTH_CONNECT_CHANGE_RECORD_TYPES: readonly RecordType[] =
+  HEALTH_CONNECT_SYNC_PERMISSIONS.filter(
+    (permission) =>
+      permission.accessType === 'read' &&
+      !OPTIONAL_HEALTH_CONNECT_RECORD_TYPES.includes(permission.recordType),
+  ).map((permission) => permission.recordType as RecordType);
+
+/**
+ * Narrow the change-notification record types to those actually granted.
+ *
+ * `getChanges` is all-or-nothing: it throws for the whole request if any single
+ * requested type is not granted (CW-479). The athlete can revoke an individual
+ * type from the Health Connect settings screen at any time, so asking for the
+ * full set unconditionally means one revocation kills change-driven sync
+ * entirely — and, via the 15-minute foreground poll, re-reports the failure
+ * every 15 minutes. Intersecting first degrades to "fewer change triggers".
+ */
+export function grantedHealthConnectChangeRecordTypes(
+  granted: readonly HealthConnectPermissionLike[],
+): RecordType[] {
+  const readable = new Set(granted.filter((p) => p.accessType === 'read').map((p) => p.recordType));
+  return HEALTH_CONNECT_CHANGE_RECORD_TYPES.filter((recordType) => readable.has(recordType));
+}
+
 /** Background access is best-effort; the remaining record reads are required. */
 export function hasRequiredHealthConnectPermissions(
   granted: readonly HealthConnectPermissionLike[],
@@ -124,29 +153,98 @@ export function hasRequiredHealthConnectPermissions(
 }
 
 /**
+ * Why a permission request did not end in usable access.
+ *
+ * `denied` is Android-only on purpose: Health Connect reports which permissions
+ * were granted, HealthKit does not. Collapsing an iOS *exception* into the same
+ * bucket as a denial is what made a failing HealthKit call surface as "Health
+ * permissions are required to enable sync", hiding the real error in a
+ * `console.warn` (CW-571).
+ */
+export type HealthPermissionFailure =
+  /** The platform health store is not usable on this device. */
+  | { ok: false; reason: 'unavailable' }
+  /** The store reported that required permissions are missing (Android only). */
+  | { ok: false; reason: 'denied' }
+  /** The request threw. `message` is the underlying error, for display. */
+  | { ok: false; reason: 'error'; message: string };
+
+/**
+ * Outcome of a permission request.
+ *
+ * `ok: true` means the request *completed* — on iOS that is all HealthKit will
+ * ever tell us, so it deliberately does not imply anything was granted.
+ */
+export type HealthPermissionRequestResult = { ok: true } | HealthPermissionFailure;
+
+function errorMessage(err: unknown): string {
+  if (err instanceof Error && err.message) return err.message;
+  return typeof err === 'string' && err ? err : 'Unknown error';
+}
+
+/**
  * Request the full Health Sync read set (wellness + workouts).
  * Used by Connect and when enabling Sync to Coach Watts / Sync workouts.
  */
-export async function requestHealthSyncPermissions(): Promise<boolean> {
+export async function requestHealthSyncPermissionsResult(): Promise<HealthPermissionRequestResult> {
   try {
     if (Platform.OS === 'ios') {
       const HK = await import('@kingstinct/react-native-healthkit');
       const available = await HK.isHealthDataAvailable();
-      if (!available) return false;
+      if (!available) return { ok: false, reason: 'unavailable' };
+      // The resolved value only reports that the request was processed, never
+      // whether reads were granted — see `healthKitAccess.ts`. A denial is
+      // indistinguishable from a grant here, so anything short of a throw is a
+      // completed request.
       await HK.requestAuthorization({ toRead: HEALTHKIT_SYNC_READ_TYPES });
-      return true;
+      return { ok: true };
     }
 
     if (Platform.OS === 'android') {
       const HC = await import('react-native-health-connect');
       const status = await HC.getSdkStatus();
-      if (status !== 3) return false;
+      if (status !== HC.SdkAvailabilityStatus.SDK_AVAILABLE) {
+        return { ok: false, reason: 'unavailable' };
+      }
       await HC.initialize();
       const granted = await HC.requestPermission([...HEALTH_CONNECT_SYNC_PERMISSIONS]);
-      return Array.isArray(granted) && hasRequiredHealthConnectPermissions(granted);
+      return Array.isArray(granted) && hasRequiredHealthConnectPermissions(granted)
+        ? { ok: true }
+        : { ok: false, reason: 'denied' };
     }
   } catch (err) {
     console.warn('[HealthSync] permission request failed', err);
+    return { ok: false, reason: 'error', message: errorMessage(err) };
   }
-  return false;
+  return { ok: false, reason: 'unavailable' };
+}
+
+/** Boolean form for callers that only branch on success. */
+export async function requestHealthSyncPermissions(): Promise<boolean> {
+  return (await requestHealthSyncPermissionsResult()).ok;
+}
+
+/**
+ * What to tell the athlete when a permission request could not be completed.
+ *
+ * Pure so the wording is testable off-device; `platformOS` is a plain string
+ * rather than a `Platform.OS` read for the same reason. Only genuine failures
+ * reach here — an iOS denial never does, because HealthKit does not report one.
+ */
+export function healthPermissionFailureMessage(
+  failure: HealthPermissionFailure,
+  platformOS: string,
+): string {
+  const store = platformOS === 'ios' ? 'Apple Health' : 'Health Connect';
+  switch (failure.reason) {
+    case 'unavailable':
+      return `${store} is not available on this device.`;
+    case 'denied':
+      return `${store} permissions are required to enable sync. Grant the missing data types and try again.`;
+    case 'error':
+      // Surfacing the underlying error matters: this used to be reported as a
+      // permissions problem, which sent people to a settings screen that could
+      // not fix it (CW-571).
+      return `${store} could not be reached: ${failure.message}`;
+  }
 }

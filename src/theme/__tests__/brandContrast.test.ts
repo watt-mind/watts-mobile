@@ -109,6 +109,92 @@ describe('brand as fill', () => {
   });
 });
 
+/**
+ * CW-348: components were tinting glyphs with raw accent hex instead of the
+ * foreground tokens, so light mode shipped 1.74:1–3.79:1 text. Each row pins
+ * the literal that shipped to the token that replaced it, so a revert has to
+ * fail here as well as in `scripts/check-theme-tokens.mjs`.
+ */
+const RAW_ACCENT_SUBSTITUTIONS = [
+  { raw: '#22c55e', token: 'successOnSurface', site: 'FirstRunActivationCompanion bolt' },
+  { raw: '#ef4444', token: 'dangerOnSurface', site: 'FirstRunActivationCompanion heart' },
+  { raw: '#3b82f6', token: 'macroProteinOnSurface', site: 'FirstRunActivationCompanion run' },
+  { raw: '#a855f7', token: 'macroFatOnSurface', site: 'FirstRunActivationCompanion chat' },
+  { raw: '#34d399', token: 'successOnSurface', site: 'CoachChat nutrition glyph' },
+  { raw: '#fb7185', token: 'dangerOnSurface', site: 'CoachChat wellness glyph' },
+  { raw: '#a5b4fc', token: 'macroFatOnSurface', site: 'CoachChat planning glyph' },
+  { raw: '#38bdf8', token: 'recoveryOnSurface', site: 'CoachChat workouts glyph' },
+  { raw: '#f87171', token: 'dangerOnSurface', site: 'CoachChat / recovery-event error' },
+  { raw: '#00DC82', token: 'brandOnSurface', site: 'CoachChat dictation spinner' },
+] as const;
+
+describe('raw accents replaced by foreground tokens (CW-348)', () => {
+  it.each(RAW_ACCENT_SUBSTITUTIONS)(
+    '$site: $raw failed light mode, $token clears AA',
+    ({ raw, token }) => {
+      expect(contrastRatio(raw, Themes.light.surface)).toBeLessThan(AA_NORMAL);
+      expect(contrastRatio(Themes.light[token], Themes.light.surface)).toBeGreaterThanOrEqual(
+        AA_NORMAL,
+      );
+      expect(contrastRatio(Themes.dark[token], Themes.dark.surface)).toBeGreaterThanOrEqual(
+        AA_NORMAL,
+      );
+    },
+  );
+
+  it('keeps the muted token readable — it tints the denied/unknown glyphs', () => {
+    for (const theme of [Themes.light, Themes.dark]) {
+      expect(contrastRatio(theme.textMuted, theme.surface)).toBeGreaterThanOrEqual(AA_LARGE);
+    }
+  });
+
+  it('keeps invariant white ink legible on the invariant recording fill', () => {
+    // CoachChat's dictation button paints `bg-red-500` in both themes, so its
+    // ink stays invariant white. Graphic, not text — the 3:1 floor applies.
+    expect(contrastRatio(Themes.dark.textPrimary, Themes.dark.danger)).toBeGreaterThanOrEqual(
+      AA_LARGE,
+    );
+    expect(Themes.dark.danger).toBe(Themes.light.danger);
+  });
+});
+
+describe('the guardrail script covers what these tokens protect', () => {
+  const script = readFileSync('scripts/check-theme-tokens.mjs', 'utf8');
+
+  it('matches any hex literal, not an enumerated handful', () => {
+    // Read the script's own regex back rather than restating it here, so the
+    // two cannot drift apart.
+    const hexRule = /const hexPattern =\s*\/(.+)\/[a-z]*;/.exec(script);
+    expect(hexRule, 'hexPattern not found in check-theme-tokens.mjs').not.toBeNull();
+    const pattern = new RegExp(hexRule![1]!);
+
+    for (const { raw } of RAW_ACCENT_SUBSTITUTIONS) {
+      expect(pattern.test(`color: '${raw}'`), raw).toBe(true);
+    }
+    for (const shorthand of ['#fff', '#0af', '#00DC8280']) {
+      expect(pattern.test(`color: '${shorthand}'`), shorthand).toBe(true);
+    }
+    // Not a colour — an id-like token must not trip the rule.
+    expect(pattern.test('#0123456789abcdef')).toBe(false);
+  });
+
+  it('keeps every allowlisted exception documented with a reason', () => {
+    const allowlist = script.split('const allowlist')[1]?.split('const violations')[0] ?? '';
+    for (const file of [
+      'app/+html.tsx',
+      'app/(app)/invite.tsx',
+      'src/features/auth/AuthAtmosphere.tsx',
+      'src/features/log/WellnessScoreCard.tsx',
+      'src/features/nutrition/BarcodeScannerModal.tsx',
+    ]) {
+      expect(allowlist).toContain(file);
+    }
+    // One `reason:` per allowlisted file — no silent entries.
+    expect(allowlist.match(/reason:/g)?.length).toBe(5);
+    expect(allowlist.match(/literals:/g)?.length).toBe(5);
+  });
+});
+
 describe('token sources agree', () => {
   const css = readFileSync('global.css', 'utf8');
 

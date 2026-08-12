@@ -60,7 +60,7 @@ See [023](./023-store-page-stellar-polish.md) for App Previews, ASO, Custom Prod
 
 ## Steps (tracking)
 
-1. [ ] Decide screenshot owner (marketing vs eng) and capture required iPhone sizes from a **production/TestFlight** build. **0 of 10** screenshots in ASC today.
+1. [x] Capture + upload iPhone screenshots at ASC-required size — **9/10** on ASC **0.1.1** (midnight treatment, `1284×2778` upload set). TestFlight build for final smoke still pending ([006](./006-ios-production-build.md)).
 2. [x] Write subtitle / description / keywords / promotional text. Saved on ASC **0.1.1**.
 3. [x] Support URL + Marketing URL: `https://coachwatts.com`.
 4. [x] Category: Health & Fitness (primary); no secondary.

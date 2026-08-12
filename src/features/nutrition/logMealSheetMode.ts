@@ -1,5 +1,5 @@
 import type { PhotoNutritionEstimate } from '@/src/features/nutrition/api';
-import { localDateYmd } from '@/src/features/nutrition/mapNutrition';
+import { localDateYmd } from '@/src/lib/date';
 
 export type LogMealSheetMode = 'compose' | 'analyzing' | 'review' | 'logged';
 

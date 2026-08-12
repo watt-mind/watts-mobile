@@ -18,6 +18,7 @@ import { OfflineBanner } from '@/src/components/OfflineBanner';
 import { Skeleton, SkeletonScreen } from '@/src/components/Skeleton';
 import { SportIcon } from '@/src/components/SportIcon';
 import {
+  ACTIVITY_GLANCE_WORKOUTS_KEY,
   useCompletePlannedWorkout,
   useRecentActivityQuery,
   useSkipPlannedWorkout,
@@ -480,6 +481,7 @@ export default function TodayScreen() {
         recentQuery.refetch(),
         profileQuery.refetch(),
         dailyCheckinQuery.refetch(),
+        queryClient.invalidateQueries({ queryKey: ACTIVITY_GLANCE_WORKOUTS_KEY }),
         queryClient.invalidateQueries({ queryKey: DASHBOARD_PROFILE_KEY }),
         queryClient.invalidateQueries({ queryKey: ['wellness'] }),
         queryClient.invalidateQueries({ queryKey: pmcQueryKey(90) }),
@@ -997,7 +999,7 @@ export default function TodayScreen() {
             <View>
               <TrainingLoadGlance />
               <MonthlyProgressGlance />
-              <WeekGlanceStrip recent={recentQuery.data} planned={upcomingQuery.data} />
+              <WeekGlanceStrip planned={upcomingQuery.data} />
               <UpcomingEventsGlance />
               <ComingUpStrip excludePlannedId={planned?.id} />
               <RecentlyTeaser />

@@ -2,12 +2,11 @@ import { Pressable, Text, View } from 'react-native';
 
 import { AppSymbol } from '@/src/components/AppSymbol';
 import type { RecoveryContextItem } from '@/src/features/recovery/types';
-import { optionById } from '@/src/features/recovery/taxonomy';
 import { hapticLight } from '@/src/lib/haptics';
 import { Colors } from '@/src/theme/colors';
 import { useThemeColors } from '@/src/theme/useThemeColors';
 
-import { formatRecoveryDate } from '@/src/features/recovery/mapRecovery';
+import { formatRecoveryDate, recoveryItemOption } from '@/src/features/recovery/mapRecovery';
 
 interface RecoveryEventCardProps {
   item: RecoveryContextItem;
@@ -18,9 +17,9 @@ export function RecoveryEventCard({ item, onPress }: RecoveryEventCardProps) {
   const theme = useThemeColors();
   const readOnly = item.sourceType === 'imported' || !item.editable;
 
-  const option = optionById(item.label as any);
-  const iconSf = option?.sf ?? 'waveform.path.ecg';
-  const iconEmoji = option?.emoji ?? '🩹';
+  const option = recoveryItemOption(item);
+  const iconSf = option.sf;
+  const iconEmoji = option.emoji;
 
   const severity = item.severity ?? 5;
   const severityPct = (severity / 10) * 100;
@@ -45,7 +44,7 @@ export function RecoveryEventCard({ item, onPress }: RecoveryEventCardProps) {
             style={{ backgroundColor: `${Colors.modify}22` }}
           >
             <AppSymbol
-              sf={iconSf as any}
+              sf={iconSf}
               size={18}
               tintColor={theme.modifyOnSurface}
               fallback={iconEmoji}

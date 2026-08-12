@@ -14,6 +14,92 @@ Format:
 
 ---
 
+## 2026-08-09 — Play production submitted for review (017)
+
+- **Publishing overview → Send 11 changes for review** confirmed (production **6 (0.1.1)**, **176 countries**, store listing, Data safety, Sign in details, etc.).
+- Status: **Changes in review** (quick pre-review checks still running; Google notes up to ~14 min before full queue).
+- **Sign in details** verified: `coachwatts.play.review@gmail.com` + password + OAuth PKCE instructions ([008](./tasks/008-reviewer-demo-account.md)).
+- **Managed publishing off** — production should go live when Google approves (no manual publish step unless toggled).
+- iOS still **Waiting for Review** (submitted earlier today).
+
+## 2026-08-09 — Play production submit in progress (017)
+
+- Store listing **saved** with **4 phone screenshots** (framed Today / Plan / Fuel / Coach from media library) + icon + feature graphic; draft cleared.
+- Production **draft release** created; attach **versionCode 6** via **Add from library** (do not re-upload AAB — duplicate version code error).
+- **Blockers before Send for review:** Production **Countries / regions** still **0** (add target countries); [008](./tasks/008-reviewer-demo-account.md) Play **Sign in details** must include Google demo **email + password** + OAuth notes; complete **Preview and confirm** on production release.
+- [016](./tasks/016-play-internal-test-smoke.md) closed — human testers passed Internal smoke (user sign-off).
+- iOS remains **Waiting for Review** (submitted earlier today).
+
+## 2026-08-09 — Play store listing graphics saved (013)
+
+- Watt Mind Play Console account: **Default store listing** graphics confirmed — app icon, feature graphic, and phone screenshots look good (user sign-off).
+- Internal track already has **0.1.1 / versionCode 6** ([015](./tasks/015-android-production-build.md)).
+- Unblocks [017](./tasks/017-play-production-submit.md) once [016](./tasks/016-play-internal-test-smoke.md) passes on a Play-installed build and Play review sign-in is set ([008](./tasks/008-reviewer-demo-account.md)).
+
+## 2026-08-09 — Android Internal vc6 + release smoke (Play path resumed)
+
+- Built and uploaded signed AAB **0.1.1 / versionCode 6** (`coach-watts-0.1.1-vc6.aab`, ~98.5 MiB) via `pnpm release:android:internal -- --version-code 6 --upload-internal`; Play Internal rollout **completed** (release name `0.1.1 (6)`).
+- Release APK smoke on **Pixel_10_Pro_XL** emulator (same signed release binary as AAB; not Play-install path): branded sign-in → home-screen icon → Today / Plan / Coach / More → About `v0.1.1 (4)` + privacy/terms links. OAuth PKCE not re-tested (existing session on emulator).
+- Play listing graphics upload via API (`scripts/play-listing-upload.mjs`) **blocked**: SA `play-internal-uploader@coach-watts.iam.gserviceaccount.com` has testing-track release only — commit failed with “caller does not have permission” for store listing edits. **Next:** upload `dist/play-listing/` in Console (Watt Mind Google account) or grant SA **Manage store presence**.
+- Chrome opened Play Console on `hdkiller@gmail.com` → signup page (wrong account). Use Watt Mind Play owner account for listing upload + production submit ([013](./tasks/013-play-listing-assets.md), [017](./tasks/017-play-production-submit.md)).
+
+## 2026-08-09 — iOS 0.1.1 (4) submitted for App Review
+
+- ASC **0.1.1** with build **4** attached → **Add for Review** → **Submit for Review** (user-approved; Chrome CDP on signed-in profile).
+- Status: **Waiting for Review** (ASC inflight version page). Confirmation: “1 Item Submitted — up to 48 hours.”
+- Listing: 9/10 iPhone 6.5" screenshots (midnight); SIWA primary in App Review notes; manual release after approval.
+- Next: monitor App Review email; resume Play Internal ([015](./tasks/015-android-production-build.md)–[017](./tasks/017-play-production-submit.md)) in parallel if desired.
+
+## 2026-08-09 — TestFlight build 0.1.1 (4) ready; release smoke passed
+
+- ASC TestFlight: **0.1.1 (4)** status **Ready to Submit** (internal group **WM**, 90-day expiry).
+- Release smoke ([007](./tasks/007-testflight-smoke.md)) on **Release-iphonesimulator** binary (same embedded config as archive; device IPA not installable on sim): branded splash/sign-in, PKCE → `coachwatts.com`, Today/Plan/Log/Coach/More, About `v0.1.1 (4)`, Export my data → web Danger Zone, push prompt denied, coach check-in loads. Sign-in reused existing IdP session after sign-out (no password in release UI).
+- **Not exercised on sim:** airplane-mode offline copy (Control Center airplane inconclusive); explicit HealthKit deny (Health shows “Not connected”, Log usable). Optional: physical TestFlight install + `/go/*` deep link.
+- Next: attach build **4** on ASC **0.1.1** → submit ([009](./tasks/009-submit-for-review.md)).
+
+## 2026-08-09 — TestFlight build 0.1.1 (4) archived and uploaded
+
+- Bumped `expo.ios.buildNumber` **3 → 4**; parked `.env.local` (e2e) for store prebuild.
+- `npx expo prebuild -p ios --clean` → `xcodebuild archive` → `xcodebuild -exportArchive` with `destination=upload` (Watt Mind `42K8S6866N`).
+- Artifact: `dist/ios/CoachWatts-0.1.1-4.xcarchive`; logs `dist/ios/archive-0.1.1-4.log`, `dist/ios/export-upload-0.1.1-4.log`.
+- **Upload succeeded** to App Store Connect; ASC processing started. dSYM warnings for prebuilt Expo/RN/Hermes frameworks (non-blocking).
+- Next: wait for processing → TestFlight smoke ([007](./tasks/007-testflight-smoke.md)) → submit ([009](./tasks/009-submit-for-review.md)).
+
+## 2026-08-09 — ASC iPhone screenshots uploaded (9/10, midnight)
+
+- Rendered + `validate:public` passed; uploaded **midnight** treatment to ASC **0.1.1 → Previews and Screenshots → iPhone 6.5"** via Chrome CDP.
+- ASC rejected native `1206×2622` masters; uploaded resized set at `watts-marketing/content/app-store/mobile-app/asc-upload-1284x2778/` (`1284×2778`).
+- **9 of 10** screenshots on file in App Store Connect; version saved. Next: TestFlight Archive ([006](./tasks/006-ios-production-build.md)) then [009](./tasks/009-submit-for-review.md).
+
+## 2026-08-09 — Marketing renderer: ASC screenshot derivatives ready
+
+- Ran `watts-marketing/tools/renderers/mobile-app` build after demo recapture; cleared publication holds on all nine screens.
+- **36 derivatives** generated; `pnpm run validate:public` passes (technical + publication gate).
+- App Store upload set (pick one treatment): `watts-marketing/content/app-store/mobile-app/midnight/` or `.../signal/` (9× `1206×2622` PNGs).
+- Finder opened for visual QA; next: upload to ASC **0.1.1 → Previews and Screenshots → iPhone** ([004](./tasks/004-listing-metadata-assets.md)), then TestFlight Archive ([006](./tasks/006-ios-production-build.md)).
+
+- Seeded hosted review athlete `coachwatts.play.review@gmail.com` on prod (synthetic data only — not a raw copy of founder workouts): goal, active plan + plan weeks, planned/completed workouts, wellness, nutrition, Today recommendation, Coach chat. Script: `coach-wattz/scripts/tmp-seed-play-review-demo.ts --prod`.
+- Recaptured dark-mode `01`–`09` masters on iPhone 17 Pro (`1206×2622`) into `watts-marketing/captures/mobile-app/current/` (prior set archived under `archive/2026-07-24-pre-demo-reseed/`).
+- Next: run marketing renderer → upload framed set to ASC ([004](./tasks/004-listing-metadata-assets.md)); then TestFlight Archive ([006](./tasks/006-ios-production-build.md)).
+
+## 2026-08-09 — Apple Bank Holder / Legal Entity screening cleared
+
+- App Store Connect **Bank Account Holder Compliance Screening** and **Legal Entity Name (English)** for Watt Mind Kft. confirmed **cleared / Active** (was Submitted 2026-08-02; Case ID `20000120973249`).
+- Unblocks paid-commerce follow-ups on [019](./tasks/019-paid-agreements-and-products.md) (Paid Apps / banking Pending User Info → Active). Free store candidate was never blocked on this.
+- Parallel session focus: iOS ASC screenshots via simulator ([004](./tasks/004-listing-metadata-assets.md)) before TestFlight Archive resume ([006](./tasks/006-ios-production-build.md)).
+
+## 2026-08-02 — App Store Connect Bank Holder & Legal Entity (English) Compliance Submitted
+
+- Downloaded and captured official EU VIES VAT Validation Certificate (`HU32998946`) in English and Erste HUF Bank Statement (HU…4237, July 2026).
+- Submitted required compliance documentation in App Store Connect for **Bank Account Holder Compliance Screening** and **Legal Entity Name (English)** for Watt Mind Kft. (`Watt Mind Korlatolt Felelossegu Tarsasag`).
+- PDF documents captured in repo `docs/distribution/compliance/` and accounting vault `expenses/bank-statements/erste/`. See task [019](./tasks/019-paid-agreements-and-products.md).
+
+## 2026-08-01 — Android Internal AAB build + upload (versionCode 5)
+
+- Merged `develop` into `master` via [PR #117](https://github.com/watt-mind/watts-mobile/pull/117) (174 commits since the previous master merge).
+- Built and uploaded signed AAB **0.1.1 / versionCode 5** (`coach-watts-0.1.1-vc5.aab`, ~98.5 MiB) via `pnpm release:android:internal -- --version-code 5 --upload-internal`; Play Internal rollout committed (status: completed).
+- Note: versionCode 4 (built 2026-07-28) was uploaded to Internal previously but never logged here — Play track showed `0.1.1 (4)` completed before this release.
+
 ## 2026-07-27 — Apple Support ticket created for Paid Apps screening bug (Case ID 20000120973249)
 
 - Submitted Apple Developer Contact Us ticket regarding the portal bug on Bank Account Holder Compliance Screening ("Add user info" submission reload loop across browsers/PDFs).

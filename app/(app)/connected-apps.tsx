@@ -1,13 +1,14 @@
 /* Hallmark · genre: modern-minimal · design-system: docs/DESIGN.md · designed-as-app */
 import { Stack, type Href, router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, AppState, Pressable, ScrollView, Text, View } from 'react-native';
+import { AppState, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-screens/experimental';
 
 import { useAuth } from '@/src/auth/AuthContext';
 import { Button } from '@/src/components/Button';
 import { AppSymbol } from '@/src/components/AppSymbol';
 import { Skeleton } from '@/src/components/Skeleton';
+import { Spinner } from '@/src/components/Spinner';
 import { openInstanceWeb } from '@/src/features/account/openInstanceWeb';
 import { CONNECTED_APPS_WEB_PATH } from '@/src/features/integrations/providers';
 import { useIntegrationStatus } from '@/src/features/integrations/useIntegrationStatus';
@@ -166,9 +167,7 @@ export default function ConnectedAppsLiteScreen() {
             <Text className="text-xs font-semibold uppercase tracking-widest text-text-muted">
               Coach Watts Connected Apps
             </Text>
-            {isFetching && !isLoading ? (
-              <ActivityIndicator size="small" color={theme.textMuted} />
-            ) : null}
+            {isFetching && !isLoading ? <Spinner size="small" tone="muted" /> : null}
           </View>
 
           {isLoading && !rows ? (

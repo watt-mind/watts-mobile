@@ -28,8 +28,9 @@ import { AnimatedView } from '@/src/components/AnimatedView';
 import { AppSymbol } from '@/src/components/AppSymbol';
 import { hapticLight, hapticSuccess } from '@/src/lib/haptics';
 import { CoachChatSkeleton } from '@/src/components/Skeleton';
+import { Spinner } from '@/src/components/Spinner';
 import { useKeyboardOverlap } from '@/src/hooks/useKeyboardOverlap';
-import { Colors } from '@/src/theme/colors';
+import { Colors, type ThemeColors } from '@/src/theme/colors';
 import { useThemeColors } from '@/src/theme/useThemeColors';
 
 import {
@@ -51,6 +52,7 @@ import {
   DISCUSS_SESSION_PROMPT,
   DISCUSS_TODAY_PROMPT,
 } from './starterPrompts';
+import { filterSubmittedApprovals } from './toolApproval';
 import type {
   CoachUIMessage,
   ToolDomain,
@@ -79,18 +81,26 @@ function ChatGlyph({
   return <AppSymbol sf={sf} size={size} tintColor={color} fallback={emoji} />;
 }
 
-function domainGlyph(domain: ToolDomain): { sf: SFSymbol; emoji: string; tint: string } {
+/**
+ * Domain glyph + tint. The tint comes from the caller's theme so each hue keeps
+ * its meaning while staying legible on both surfaces — the raw accents these
+ * replaced ran 1.84:1–2.46:1 on light `#fafafa`, well under the AA 4.5:1 floor.
+ */
+function domainGlyph(
+  domain: ToolDomain,
+  theme: ThemeColors,
+): { sf: SFSymbol; emoji: string; tint: string } {
   switch (domain) {
     case 'nutrition':
-      return { sf: 'fork.knife', emoji: '🍽', tint: '#34d399' };
+      return { sf: 'fork.knife', emoji: '🍽', tint: theme.successOnSurface };
     case 'wellness':
-      return { sf: 'heart.fill', emoji: '♥', tint: '#fb7185' };
+      return { sf: 'heart.fill', emoji: '♥', tint: theme.dangerOnSurface };
     case 'planning':
-      return { sf: 'calendar', emoji: '📅', tint: '#a5b4fc' };
+      return { sf: 'calendar', emoji: '📅', tint: theme.macroFatOnSurface };
     case 'workouts':
-      return { sf: 'figure.run', emoji: '🏃', tint: '#38bdf8' };
+      return { sf: 'figure.run', emoji: '🏃', tint: theme.recoveryOnSurface };
     default:
-      return { sf: 'wrench.and.screwdriver', emoji: '🔧', tint: '#94a3b8' };
+      return { sf: 'wrench.and.screwdriver', emoji: '🔧', tint: theme.textMuted };
   }
 }
 
@@ -110,11 +120,16 @@ function domainAccentBorder(domain: ToolDomain): string {
 }
 
 function ToolProgressChip({ item }: { item: ToolInProgressSummary }) {
-  const glyph = domainGlyph(item.domain);
+  const theme = useThemeColors();
+  const glyph = domainGlyph(item.domain, theme);
   return (
     <View
       className={`mt-2 flex-row items-center gap-2 rounded-xl border bg-card/80 px-3 py-2 ${domainAccentBorder(item.domain)}`}
     >
+      {/* Not `<Spinner />`: the tint is data-driven, not semantic — it carries the
+          running tool's domain (one of five hues from `domainGlyph`) and must match
+          the glyph beside it. A closed brand/muted/danger union cannot express that,
+          and should not try to. Allowlisted in `spinnerUsage.test.ts`. */}
       <ActivityIndicator size="small" color={glyph.tint} />
       <ChatGlyph sf={glyph.sf} emoji={glyph.emoji} size={14} tint={glyph.tint} />
       <Text className="flex-1 text-sm text-text-muted">{item.label}</Text>
@@ -123,7 +138,8 @@ function ToolProgressChip({ item }: { item: ToolInProgressSummary }) {
 }
 
 function ToolOutcomeCard({ outcome }: { outcome: ToolOutcomeSummary }) {
-  const glyph = domainGlyph(outcome.domain);
+  const theme = useThemeColors();
+  const glyph = domainGlyph(outcome.domain, theme);
   const containerClass =
     outcome.status === 'success'
       ? 'border-green-700/50 bg-tint-success'
@@ -137,7 +153,11 @@ function ToolOutcomeCard({ outcome }: { outcome: ToolOutcomeSummary }) {
         ? 'text-text-muted'
         : 'text-danger';
   const iconTint =
-    outcome.status === 'success' ? glyph.tint : outcome.status === 'denied' ? '#94a3b8' : '#f87171';
+    outcome.status === 'success'
+      ? glyph.tint
+      : outcome.status === 'denied'
+        ? theme.textMuted
+        : theme.dangerOnSurface;
   return (
     <View
       className={`mt-2 flex-row items-start gap-2 rounded-xl border px-3 py-2 ${containerClass}`}
@@ -164,13 +184,17 @@ function jitterSeed(id: string): number {
 function Bubble({
   message,
   isFresh,
+  submittedApprovalIds,
   onApprove,
 }: {
   message: CoachUIMessage;
   /** Arrived during this session — replayed history must not re-animate on open. */
   isFresh: boolean;
+  /** Approvals already sent — their cards go away the moment they are tapped. */
+  submittedApprovalIds: string[];
   onApprove: (payload: { approvalId: string; approved: boolean }) => void;
 }) {
+  const theme = useThemeColors();
   const isUser = message.role === 'user';
   const seed = jitterSeed(message.id);
   const typing = Boolean(message.metadata?.syntheticTyping);
@@ -180,7 +204,10 @@ function Bubble({
   const morphing = typing || isActiveTurnStatus(message.metadata?.turnStatus);
   const text = displayMessageText(message).trim();
   const images = messageImageParts(message);
-  const approvals = extractPendingApprovals(message);
+  const approvals = filterSubmittedApprovals(
+    extractPendingApprovals(message),
+    submittedApprovalIds,
+  );
   const toolNotes = toolOutcomeSummaries(message);
   const toolProgress = toolInProgressSummaries(message);
 
@@ -246,7 +273,7 @@ function Bubble({
       {approvals.map((approval) => {
         const preview = approvalPreviewLine(approval.args);
         const domain = resolveToolDomain(approval.toolName);
-        const glyph = domainGlyph(domain);
+        const glyph = domainGlyph(domain, theme);
         return (
           <View
             key={approval.toolCallId}
@@ -361,7 +388,7 @@ export function CoachChat({
   const [attachSheetOpen, setAttachSheetOpen] = useState(false);
   const { containerRef, overlap } = useKeyboardOverlap();
   const chat = useCoachChat({ targetRoomId });
-  const listMessages = useTypingFloor(chat.displayMessages);
+  const listMessages = useTypingFloor(chat.displayMessages, chat.roomId);
   const dictation = useCoachDictation({
     canStart: !chat.isReadOnly && !chat.sending,
     input: chat.input,
@@ -534,7 +561,11 @@ export function CoachChat({
                   chat.isRealtimeConnected ? 'bg-green-400' : 'bg-text-muted'
                 }`}
                 accessibilityLabel={
-                  chat.isRealtimeConnected ? 'Live connection' : 'Polling connection'
+                  chat.isRealtimeConnected
+                    ? 'Live connection'
+                    : chat.realtimeUnavailable
+                      ? 'Live connection unavailable — replies arrive by polling'
+                      : 'Polling connection'
                 }
               />
               <Text
@@ -613,8 +644,12 @@ export function CoachChat({
             <Bubble
               message={item}
               isFresh={historyCaptured.current && !historyIds.current.has(item.id)}
+              submittedApprovalIds={chat.submittedApprovalIds}
               onApprove={(payload) => {
-                void chat.submitToolApproval(payload);
+                // submitToolApproval resolves its own failures into sendError;
+                // the catch is the belt-and-braces guard against an unhandled
+                // rejection escaping into the RN error overlay.
+                chat.submitToolApproval(payload).catch(() => {});
               }}
             />
           )}
@@ -671,7 +706,7 @@ export function CoachChat({
               />
               {attachment.uploading ? (
                 <View className="absolute inset-0 items-center justify-center rounded-xl bg-black/50">
-                  <ActivityIndicator color={theme.brandOnSurface} />
+                  <Spinner />
                 </View>
               ) : null}
               <Pressable
@@ -734,14 +769,29 @@ export function CoachChat({
           onPress={() => void dictation.toggleRecording()}
         >
           {dictation.isTranscribing ? (
-            <ActivityIndicator color={composerEmpty ? theme.ink : Colors.brand} />
+            // Not `<Spinner />`: this button changes its own fill, so the spinner
+            // is on a fill in one state and a surface in the other — the
+            // `Button.tsx` situation, which no surface-foreground tone can express.
+            // Empty composer = brand fill, so ink. Otherwise the spinner sits on
+            // `bg-card` and needs the per-theme brand foreground: the raw fill is
+            // 1.74:1 on light #fafafa, brandOnSurface is 4.51:1.
+            // Allowlisted in `spinnerUsage.test.ts`.
+            <ActivityIndicator color={composerEmpty ? theme.ink : theme.brandOnSurface} />
           ) : (
             <ChatGlyph
               sf={dictation.isRecording ? 'stop.fill' : 'mic.fill'}
               emoji={dictation.isRecording ? '■' : '🎙'}
               size={18}
               tint={
-                dictation.isRecording ? '#ffffff' : composerEmpty ? theme.ink : theme.textPrimary
+                dictation.isRecording
+                  ? // Recording paints the button `bg-red-500`, a theme-invariant
+                    // fill, so its ink must be invariant too — `theme.textPrimary`
+                    // would flip to near-black on light and lose the affordance.
+                    // #ffffff on #ef4444 is 3.76:1, over the 3:1 non-text floor.
+                    Colors.textPrimary
+                  : composerEmpty
+                    ? theme.ink
+                    : theme.textPrimary
               }
             />
           )}
@@ -760,7 +810,11 @@ export function CoachChat({
           }}
         >
           {chat.sending ? (
-            <ActivityIndicator color={theme.ink} />
+            // `canSend` requires `!composerBusy`, and `chat.sending` sets that —
+            // so while this spinner is up the button is `bg-border-strong`, never
+            // `bg-brand`. It is on a surface, not a fill: ink was 1.95:1 on dark
+            // `borderStrong` #3f3f46; `brandOnSurface` is 6.2:1 dark / 3.2:1 light.
+            <Spinner />
           ) : (
             <ChatGlyph
               sf="arrow.up"

@@ -1,11 +1,13 @@
 import { Platform } from 'react-native';
 
-import { localDateYmd, lookbackStartDate, eachLocalDateYmd } from '../mapToWellnessPayload';
+import { localDateYmd } from '@/src/lib/date';
+import { lookbackStartDate, eachLocalDateYmd } from '../mapToWellnessPayload';
 import { canonicalSportFromHealthConnect, sportLabel } from '../sportTypes';
 import type { DailyWellnessSample, HealthReadWindow, PlatformWorkoutSession } from '../types';
 import { LOOKBACK_DAYS } from '../types';
 import {
   bucketHealthConnectSleep,
+  clipHcSleepSessionToWindow,
   dayWindowLocal,
   sleepWindowForDate,
   type HcSleepSession,
@@ -85,8 +87,13 @@ async function readHcRecords(
         `[HealthSync] ${recordType} hit the page ceiling (${HC_MAX_PAGES}) — window truncated`,
       );
     }
-  } catch {
-    // return whatever pages we already collected
+  } catch (err) {
+    // Return whatever pages we already collected, but say so: a permission
+    // denial and an empty store are otherwise indistinguishable here (CW-481).
+    console.warn(
+      `[HealthSync] ${recordType} read failed after ${out.length} record(s)`,
+      err instanceof Error ? err.message : 'error',
+    );
   }
   return out;
 }
@@ -106,9 +113,81 @@ async function readHcAggregate(
         endTime: end.toISOString(),
       },
     } as never)) as unknown as Record<string, unknown>;
-  } catch {
+  } catch (err) {
+    console.warn(
+      `[HealthSync] ${recordType} aggregate failed`,
+      err instanceof Error ? err.message : 'error',
+    );
     return undefined;
   }
+}
+
+/** Daily-aggregate record types read for the wellness sample. */
+const HC_DAILY_AGGREGATE_TYPES = [
+  'Steps',
+  'Distance',
+  'FloorsClimbed',
+  'ActiveCaloriesBurned',
+  'TotalCaloriesBurned',
+  'BasalMetabolicRate',
+  'ExerciseSession',
+] as const;
+
+type HcDailyAggregateType = (typeof HC_DAILY_AGGREGATE_TYPES)[number];
+type HcAggregateRow = Record<string, unknown> | undefined;
+/** recordType → local YMD → that day's aggregate row. */
+type HcDailyAggregates = Map<HcDailyAggregateType, Map<string, HcAggregateRow>>;
+
+/**
+ * Fetch every daily aggregate for the whole window in one call per record type.
+ *
+ * The per-day path costs 7 binder round-trips × 14 lookback days; on Android the
+ * sync pass runs inside a time-budgeted background task, where ~100 serial IPC
+ * calls is real latency (CW-481). `aggregateGroupByPeriod` slices server-side.
+ * Returns an empty map for any type the grouped call rejects, so the caller
+ * transparently falls back to the per-day aggregate for that type.
+ */
+async function readHcDailyAggregates(
+  HC: typeof import('react-native-health-connect'),
+  start: Date,
+  end: Date,
+): Promise<HcDailyAggregates> {
+  const byType: HcDailyAggregates = new Map();
+
+  await Promise.all(
+    HC_DAILY_AGGREGATE_TYPES.map(async (recordType) => {
+      const byDate = new Map<string, HcAggregateRow>();
+      byType.set(recordType, byDate);
+      try {
+        const groups = await HC.aggregateGroupByPeriod({
+          recordType: recordType as never,
+          timeRangeFilter: {
+            operator: 'between',
+            startTime: start.toISOString(),
+            endTime: end.toISOString(),
+          },
+          timeRangeSlicer: { period: 'DAYS', length: 1 },
+        } as never);
+        for (const group of (groups ?? []) as {
+          startTime?: string;
+          result?: Record<string, unknown>;
+        }[]) {
+          if (!group.startTime || !group.result) continue;
+          // Health Connect returns local wall-clock bounds for a DAYS slicer.
+          const date = localDateYmd(new Date(group.startTime));
+          byDate.set(date, group.result);
+        }
+      } catch (err) {
+        console.warn(
+          `[HealthSync] ${recordType} grouped aggregate failed — falling back to per-day`,
+          err instanceof Error ? err.message : 'error',
+        );
+        byType.delete(recordType);
+      }
+    }),
+  );
+
+  return byType;
 }
 
 export async function readHealthConnectWellness(
@@ -118,7 +197,7 @@ export async function readHealthConnectWellness(
 
   const HC = await import('react-native-health-connect');
   const status = await HC.getSdkStatus();
-  if (status !== 3) return [];
+  if (status !== HC.SdkAvailabilityStatus.SDK_AVAILABLE) return [];
   await HC.initialize();
 
   const today = new Date();
@@ -140,6 +219,19 @@ export async function readHealthConnectWellness(
       readHcRecords(HC, 'Vo2Max', rangeStart, today, 20),
     ]);
 
+  // One grouped call per aggregate type for the whole window, instead of one
+  // per type per day — see readHcDailyAggregates (CW-481).
+  const firstDate = dates[0];
+  const lastDate = dates[dates.length - 1];
+  const dailyAggregates: HcDailyAggregates =
+    firstDate && lastDate
+      ? await readHcDailyAggregates(
+          HC,
+          dayWindowLocal(firstDate).start,
+          dayWindowLocal(lastDate).end,
+        )
+      : new Map();
+
   const samples: DailyWellnessSample[] = [];
 
   for (const date of dates) {
@@ -157,8 +249,14 @@ export async function readHealthConnectWellness(
       if (!r.startTime || !r.endTime) continue;
       const start = new Date(r.startTime).getTime();
       const end = new Date(r.endTime).getTime();
-      if (end < sleepWin.start.getTime() || start > sleepWin.end.getTime()) continue;
-      sleepIntervals.push({ start, end, stages: r.stages });
+      // Clipped, not just filtered: a session crossing the noon boundary is
+      // split between the two dates instead of counted in full on both (CW-480).
+      const clipped = clipHcSleepSessionToWindow(
+        { start, end, stages: r.stages },
+        sleepWin.start.getTime(),
+        sleepWin.end.getTime(),
+      );
+      if (clipped) sleepIntervals.push(clipped);
     }
 
     const sleepBucket = bucketHealthConnectSleep(sleepIntervals);
@@ -247,15 +345,23 @@ export async function readHealthConnectWellness(
     const vo2 = latest(vo2s);
     if (vo2 != null) sample.vo2max = Math.round(vo2 * 10) / 10;
 
+    // Grouped result when the batched call worked; per-day call only for types
+    // it rejected (a type absent from the map, not merely absent for this day).
+    const dailyAggregate = async (recordType: HcDailyAggregateType): Promise<HcAggregateRow> => {
+      const grouped = dailyAggregates.get(recordType);
+      if (grouped) return grouped.get(date);
+      return readHcAggregate(HC, recordType, dayStart, dayEnd);
+    };
+
     const [stepsAgg, distanceAgg, floorsAgg, activeAgg, totalAgg, basalAgg, exerciseAgg] =
       await Promise.all([
-        readHcAggregate(HC, 'Steps', dayStart, dayEnd),
-        readHcAggregate(HC, 'Distance', dayStart, dayEnd),
-        readHcAggregate(HC, 'FloorsClimbed', dayStart, dayEnd),
-        readHcAggregate(HC, 'ActiveCaloriesBurned', dayStart, dayEnd),
-        readHcAggregate(HC, 'TotalCaloriesBurned', dayStart, dayEnd),
-        readHcAggregate(HC, 'BasalMetabolicRate', dayStart, dayEnd),
-        readHcAggregate(HC, 'ExerciseSession', dayStart, dayEnd),
+        dailyAggregate('Steps'),
+        dailyAggregate('Distance'),
+        dailyAggregate('FloorsClimbed'),
+        dailyAggregate('ActiveCaloriesBurned'),
+        dailyAggregate('TotalCaloriesBurned'),
+        dailyAggregate('BasalMetabolicRate'),
+        dailyAggregate('ExerciseSession'),
       ]);
 
     const steps = stepsAgg?.COUNT_TOTAL;
@@ -293,7 +399,7 @@ export async function readHealthConnectWorkouts(
 
   const HC = await import('react-native-health-connect');
   const status = await HC.getSdkStatus();
-  if (status !== 3) return [];
+  if (status !== HC.SdkAvailabilityStatus.SDK_AVAILABLE) return [];
   await HC.initialize();
 
   const today = new Date();
@@ -344,19 +450,24 @@ export async function readHealthConnectWorkouts(
     }
   }
 
-  const cadenceSamples: { t: number; rpm: number }[] = [];
+  // Kept apart, not concatenated: CyclingPedalingCadence is crank rpm and
+  // StepsCadence is steps/min. Merging them puts two different units in one
+  // series, so a session covered by both sources reports nonsense (CW-481).
+  // Per session, cycling cadence wins and steps cadence is the fallback.
+  const cyclingCadenceSamples: { t: number; rpm: number }[] = [];
   for (const rec of cadenceRecs) {
     const r = rec as { samples?: { time?: string; revolutionsPerMinute?: number }[] };
     for (const s of r.samples ?? []) {
       if (!s.time || s.revolutionsPerMinute == null) continue;
-      cadenceSamples.push({ t: new Date(s.time).getTime(), rpm: s.revolutionsPerMinute });
+      cyclingCadenceSamples.push({ t: new Date(s.time).getTime(), rpm: s.revolutionsPerMinute });
     }
   }
+  const stepsCadenceSamples: { t: number; rpm: number }[] = [];
   for (const rec of stepsCadenceRecs) {
     const r = rec as { samples?: { time?: string; rate?: number }[] };
     for (const s of r.samples ?? []) {
       if (!s.time || s.rate == null) continue;
-      cadenceSamples.push({ t: new Date(s.time).getTime(), rpm: s.rate });
+      stepsCadenceSamples.push({ t: new Date(s.time).getTime(), rpm: s.rate });
     }
   }
 
@@ -404,8 +515,10 @@ export async function readHealthConnectWorkouts(
     const sessionPower = summarizePower(
       powerSamples.filter((s) => s.t >= start.getTime() && s.t <= windowEnd),
     );
+    const inSession = (s: { t: number }) => s.t >= start.getTime() && s.t <= windowEnd;
+    const sessionCyclingCadence = cyclingCadenceSamples.filter(inSession);
     const sessionCadence = summarizeCadence(
-      cadenceSamples.filter((s) => s.t >= start.getTime() && s.t <= windowEnd),
+      sessionCyclingCadence.length ? sessionCyclingCadence : stepsCadenceSamples.filter(inSession),
     );
     const sessionSpeed = summarizeSpeed(
       speedSamples.filter((s) => s.t >= start.getTime() && s.t <= windowEnd),

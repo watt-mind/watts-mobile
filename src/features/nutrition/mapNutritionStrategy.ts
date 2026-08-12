@@ -1,3 +1,5 @@
+import { localDateYmd } from '@/src/lib/date';
+
 import { fuelStateLabel } from './mapNutrition';
 
 export type FuelStateCode = 1 | 2 | 3;
@@ -91,14 +93,6 @@ function asFuelState(value: unknown): FuelStateCode | null {
   return null;
 }
 
-function localDateKeyToday(): string {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
 export function mapNutritionStrategy(payload: unknown): NutritionStrategyStanding | null {
   const root = asRecord(payload);
   if (!root) return null;
@@ -125,7 +119,7 @@ export function mapNutritionStrategy(payload: unknown): NutritionStrategyStandin
     })
     .filter((row): row is NonNullable<typeof row> => row != null);
 
-  const todayKey = localDateKeyToday();
+  const todayKey = localDateYmd();
   const today = matrix.find((d) => d.dateKey === todayKey) ?? matrix[0] ?? null;
 
   const debt = Math.max(0, Math.round(asNumber(root.hydrationDebt) ?? 0));

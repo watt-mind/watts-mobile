@@ -1,5 +1,5 @@
-import { localDateYmd } from '@/src/features/log/mapLogForm';
-import { localDateKey } from '@/src/features/today/weekGlance';
+import { localDateKey, localDateYmd } from '@/src/lib/date';
+import { ymdToLocalEndOfDayIso, ymdToLocalStartOfDayIso } from '@/src/lib/wireDate';
 
 import type { AvailabilityDay } from './api';
 import type { PlanInitializeResult, PlanStrategy, StartingPhase, VolumePreference } from './types';
@@ -27,14 +27,26 @@ export type PhaseGlance = {
   type: string | null;
 };
 
-/** Local calendar YYYY-MM-DD → initialize/activate ISO at UTC noon (matches goal create). */
-export function planDateIsoNoon(ymd: string): string {
-  return new Date(`${ymd}T12:00:00.000Z`).toISOString();
+/**
+ * Local calendar YYYY-MM-DD → initialize/activate `startDate`.
+ *
+ * CW-493: `/api/plans/initialize` validates `z.string().datetime()` (so a bare
+ * YYYY-MM-DD is rejected) and then re-derives the calendar day from the
+ * instant using the athlete's stored timezone. A fixed UTC hour therefore
+ * lands on the wrong day at the extremes — UTC noon is a day late at UTC+12,
+ * UTC midnight a day early at UTC-5 — so the instant of *local* midnight is
+ * sent, matching the web PlanWizard.
+ */
+export function planStartDateIso(ymd: string): string {
+  return ymdToLocalStartOfDayIso(ymd);
 }
 
-/** End-of-day ISO for initialize `endDate` (web PlanWizard uses 23:59:59). */
+/** @deprecated Misnomer since CW-493 — the anchor is local midnight, not UTC noon. Use `planStartDateIso`. */
+export const planDateIsoNoon = planStartDateIso;
+
+/** End-of-day ISO for initialize `endDate`, anchored to the athlete's local day (CW-493). */
 export function planEndDateIso(ymd: string): string {
-  return new Date(`${ymd}T23:59:59.000Z`).toISOString();
+  return ymdToLocalEndOfDayIso(ymd);
 }
 
 export function addWeeksToYmd(ymd: string, weeks: number): string {
@@ -45,29 +57,32 @@ export function addWeeksToYmd(ymd: string, weeks: number): string {
   return localDateYmd(date);
 }
 
-/** Next Monday after `from` (if today is Monday, returns next week). */
-export function nextMondayYmd(from = new Date()): string {
-  const d = new Date(from.getFullYear(), from.getMonth(), from.getDate());
-  const day = d.getDay();
-  const daysUntil = day === 0 ? 1 : day === 1 ? 7 : 8 - day;
-  d.setDate(d.getDate() + daysUntil);
-  return localDateYmd(d);
-}
-
 export function clampDurationWeeks(weeks: number): number {
   if (!Number.isFinite(weeks)) return 12;
   return Math.min(52, Math.max(4, Math.round(weeks)));
 }
 
-/** Whole weeks from start→end (calendar days / 7, floored). */
+/**
+ * Whole weeks from start→end (calendar days / 7, floored).
+ *
+ * CW-485: measured on the UTC timeline built from the Y/M/D triples, never
+ * from local-time millis — two local midnights either side of a DST spring
+ * forward are only 6 days 23h apart, which used to drop an exact 4-week span
+ * to 3 and block a legitimate plan.
+ */
 export function weeksBetweenYmd(startYmd: string, endYmd: string): number {
+  return Math.floor(daysBetweenYmd(startYmd, endYmd) / 7);
+}
+
+/** Whole calendar days from start→end (0 when either side is unparseable or end < start). */
+export function daysBetweenYmd(startYmd: string, endYmd: string): number {
   const [sy, sm, sd] = startYmd.split('-').map(Number);
   const [ey, em, ed] = endYmd.split('-').map(Number);
   if (!sy || !sm || !sd || !ey || !em || !ed) return 0;
-  const start = new Date(sy, sm - 1, sd).getTime();
-  const end = new Date(ey, em - 1, ed).getTime();
+  const start = Date.UTC(sy, sm - 1, sd);
+  const end = Date.UTC(ey, em - 1, ed);
   if (end < start) return 0;
-  return Math.floor((end - start) / (7 * 86400000));
+  return Math.round((end - start) / 86400000);
 }
 
 export function resolvePlanEndDateYmd(input: {
@@ -313,3 +328,29 @@ export const STARTING_PHASE_OPTIONS: {
 ];
 
 export const VOLUME_HOUR_CHIPS = [4, 5, 6, 8, 10, 12, 14, 16] as const;
+
+/** Upper bound the first-week preview poller waits before giving up (see api.ts). */
+export const PLAN_GENERATE_TIMEOUT_MS = 180_000;
+
+/**
+ * Progress copy for the plan "working" phase. Generation can legitimately take
+ * minutes, so the panel must show that time is passing rather than a frozen
+ * line of text.
+ */
+export function formatGenerateProgress(
+  elapsedMs: number,
+  timeoutMs: number = PLAN_GENERATE_TIMEOUT_MS,
+): { elapsedLabel: string; hint: string } {
+  const elapsedSeconds = Math.max(0, Math.floor(elapsedMs / 1000));
+  const minutes = Math.floor(elapsedSeconds / 60);
+  const seconds = elapsedSeconds % 60;
+  const elapsedLabel = `${minutes}:${String(seconds).padStart(2, '0')}`;
+  const remainingMs = Math.max(0, timeoutMs - elapsedMs);
+  const hint =
+    remainingMs === 0
+      ? 'This is taking longer than expected — you can cancel and try again.'
+      : elapsedMs >= 30_000
+        ? 'Still working. Building a season can take a couple of minutes.'
+        : 'This usually takes under a minute.';
+  return { elapsedLabel, hint };
+}

@@ -2,10 +2,12 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 
 import { formatAllowanceHint } from './allowanceCopy';
+import { QUOTA_ALLOWANCES_KEY } from './queryKeys';
 import { fetchQuotaAllowances, type QuotaAllowance } from './quotaApi';
 import type { QuotaFeature } from './quota';
 
-export const QUOTA_ALLOWANCES_KEY = ['subscription', 'allowances'] as const;
+// Re-exported so existing import sites keep working; `queryKeys.ts` owns it.
+export { QUOTA_ALLOWANCES_KEY };
 
 export function useQuotaAllowances() {
   return useQuery({

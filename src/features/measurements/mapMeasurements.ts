@@ -1,5 +1,6 @@
 import type { DistanceUnits, WeightUnits } from '@/src/features/profile/types';
 import { LBS_TO_KG } from '@/src/features/profile/mapProfile';
+import { parseDecimal } from '@/src/lib/parseDecimal';
 
 import { findMetricOption, metricCategoryFor, slugifyCustomMetric } from './catalog';
 import type {
@@ -22,10 +23,24 @@ export function emptyMeasurementForm(metricKey = 'waist'): MeasurementFormValues
   };
 }
 
+/**
+ * Parse the measurement value field (CW-555).
+ *
+ * Every numeric field here is `keyboardType="decimal-pad"`, whose only decimal
+ * key emits `,` on a comma-decimal device. Raw `Number('72,5')` was `NaN`, which
+ * made `measurementFormHasContent` report "no content" and silently greyed out
+ * the Save button with no error. Route through the shared `parseDecimal` so
+ * `72,5` and grouped input (`1 234,5`, `1.234,56`) parse, while genuinely
+ * invalid text still returns `null`.
+ */
+function parseMeasurementValue(value: string): number | null {
+  return parseDecimal(value.trim());
+}
+
 export function measurementFormHasContent(form: MeasurementFormValues): boolean {
   if (!form.value.trim()) return false;
   if (form.metricKey === 'custom' && !form.customName.trim()) return false;
-  return Number.isFinite(Number(form.value.trim()));
+  return parseMeasurementValue(form.value) != null;
 }
 
 function asCanonicalUnit(value: unknown): CanonicalUnit {
@@ -163,8 +178,8 @@ export function toCreatePayload(
   form: MeasurementFormValues,
   opts: { weightUnits: WeightUnits; distanceUnits: DistanceUnits },
 ): CreateBodyMeasurementPayload | null {
-  const display = Number(form.value.trim());
-  if (!Number.isFinite(display) || display <= 0) return null;
+  const display = parseMeasurementValue(form.value);
+  if (display == null || display <= 0) return null;
 
   const isCustom = form.metricKey === 'custom';
   const option = findMetricOption(form.metricKey);

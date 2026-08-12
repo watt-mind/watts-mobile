@@ -6,7 +6,12 @@ import { friendlyError } from '@/src/api/errors';
 import { Button } from '@/src/components/Button';
 import { applyHealthPrefill } from '@/src/features/log/applyHealthPrefill';
 import { fetchHealthPrefill } from '@/src/features/log/healthPrefill';
-import { emptyLogForm, formHasContent, toWellnessPayload } from '@/src/features/log/mapLogForm';
+import {
+  emptyLogForm,
+  formHasContent,
+  stepSleepHours,
+  toWellnessPayload,
+} from '@/src/features/log/mapLogForm';
 import { SleepDurationInput } from '@/src/features/log/SleepDurationInput';
 import { WeightInput } from '@/src/features/log/WeightInput';
 import type { LogFormValues } from '@/src/features/log/types';
@@ -90,10 +95,11 @@ export function WellnessCheckinSheet({
   const onStepSleep = (delta: number) => {
     hapticLight();
     setSleepAutoSynced(false);
-    const parsed = Number(values.sleepHours.trim());
-    const base = Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
-    const next = Math.max(0, Math.round((base + delta) * 10) / 10);
-    setValues((prev) => ({ ...prev, sleepHours: String(next) }));
+    // Deliberately reads the render-time value, not the `prev` in the updater:
+    // SleepDurationInput already applied the same step via onChangeText before
+    // firing onStep, so reading `prev` here would apply the delta a second time.
+    const next = stepSleepHours(values.sleepHours, delta);
+    setValues((prev) => ({ ...prev, sleepHours: next }));
   };
 
   const onPrefillFromHealth = async () => {

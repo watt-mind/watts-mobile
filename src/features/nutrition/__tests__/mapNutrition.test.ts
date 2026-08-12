@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { localDateYmd } from '@/src/lib/date';
 import {
   apiMealTypeToMealSlot,
   canExplainMetric,
@@ -9,7 +10,6 @@ import {
   formatWindowTime,
   fuelStateLabel,
   goalProgressPct,
-  localDateYmd,
   mapNutritionLoggedItems,
   mealSlotToApiMealType,
   nutritionWebPath,
@@ -18,8 +18,15 @@ import {
   quickLogHasContent,
   removeItemFromDay,
   roundMacro,
+  QUICK_LOG_INVALID_NUMBER,
+  QUICK_LOG_NEGATIVE,
+  quickLogInvalidFields,
+  quickLogNegativeFields,
+  quickLogValidationError,
+  toMealHistoryEntry,
   toNutritionUploadPayload,
 } from '../mapNutrition';
+import { EDIT_ITEM_INVALID_NUMBER, EDIT_ITEM_NEGATIVE } from '../editNutritionItemForm';
 
 describe('pickTodayNutrition', () => {
   it('maps today’s macros and water from list payload', () => {
@@ -480,5 +487,227 @@ describe('removeItemFromDay', () => {
     // onError path: restore previous reference
     expect(previous.items).toHaveLength(1);
     expect(previous.items[0]?.id).toBe('a');
+  });
+});
+
+describe('quick-log comma-decimal input (CW-484)', () => {
+  it('keeps macros typed with a comma decimal', () => {
+    const payload = toNutritionUploadPayload(
+      {
+        meal: 'SNACK',
+        name: 'Banana',
+        calories: '105',
+        protein: '1,3',
+        carbs: '27,5',
+        fat: '0,4',
+      },
+      '2026-01-05',
+      new Date('2026-01-05T10:00:00.000Z'),
+    );
+    const item = payload.items[0]!;
+    expect(item.calories).toBe(105);
+    expect(item.protein).toBe(1.3);
+    expect(item.carbs).toBe(27.5);
+    expect(item.fat).toBe(0.4);
+  });
+
+  it('flags filled-but-unparseable quick-log fields', () => {
+    expect(
+      quickLogInvalidFields({
+        meal: 'SNACK',
+        name: 'x',
+        calories: '105',
+        protein: '1,3',
+        carbs: '',
+        fat: 'lots',
+      }),
+    ).toEqual(['fat']);
+    expect(
+      quickLogInvalidFields({
+        meal: 'SNACK',
+        name: 'x',
+        calories: '',
+        protein: '',
+        carbs: '',
+        fat: '',
+      }),
+    ).toEqual([]);
+  });
+
+  it('does not report comma decimals as invalid or negative', () => {
+    const form = {
+      meal: 'SNACK' as const,
+      name: 'Banana',
+      calories: '105',
+      protein: '1,3',
+      carbs: '27,5',
+      fat: '0,4',
+    };
+    expect(quickLogInvalidFields(form)).toEqual([]);
+    expect(quickLogNegativeFields(form)).toEqual([]);
+    expect(quickLogValidationError(form)).toBeNull();
+  });
+});
+
+describe('quick-log negative guard (CW-349)', () => {
+  it('never emits a negative macro in the upload payload', () => {
+    const payload = toNutritionUploadPayload(
+      {
+        meal: 'SNACK',
+        name: 'Bad entry',
+        calories: '-500',
+        protein: '-10',
+        carbs: '-2,5',
+        fat: '-0.4',
+      },
+      '2026-01-05',
+      new Date('2026-01-05T10:00:00.000Z'),
+    );
+    const item = payload.items[0]!;
+    expect(item.calories).toBeGreaterThanOrEqual(0);
+    expect(item.protein).toBeGreaterThanOrEqual(0);
+    expect(item.carbs).toBeGreaterThanOrEqual(0);
+    expect(item.fat).toBeGreaterThanOrEqual(0);
+  });
+
+  it('still emits valid positive macros unchanged', () => {
+    const payload = toNutritionUploadPayload(
+      { meal: 'SNACK', name: 'Oats', calories: '320', protein: '18', carbs: '45,5', fat: '8' },
+      '2026-01-05',
+      new Date('2026-01-05T10:00:00.000Z'),
+    );
+    expect(payload.items[0]).toMatchObject({ calories: 320, protein: 18, carbs: 45.5, fat: 8 });
+  });
+
+  it('flags each negative field independently', () => {
+    for (const key of ['calories', 'protein', 'carbs', 'fat'] as const) {
+      expect(quickLogNegativeFields({ ...emptyQuickLogForm(), [key]: '-1' })).toEqual([key]);
+    }
+    expect(
+      quickLogNegativeFields({
+        meal: 'SNACK',
+        name: 'x',
+        calories: '-500',
+        protein: '10',
+        carbs: '',
+        fat: '-0,5',
+      }),
+    ).toEqual(['calories', 'fat']);
+  });
+
+  it('returns no negative fields for a valid or empty form', () => {
+    expect(quickLogNegativeFields(emptyQuickLogForm())).toEqual([]);
+    expect(
+      quickLogNegativeFields({
+        meal: 'SNACK',
+        name: 'Oats',
+        calories: '320',
+        protein: '18',
+        carbs: '45,5',
+        fat: '0',
+      }),
+    ).toEqual([]);
+  });
+
+  it('distinguishes unparseable from negative, mirroring the edit sheet wording', () => {
+    expect(QUICK_LOG_INVALID_NUMBER).toBe(EDIT_ITEM_INVALID_NUMBER);
+    expect(QUICK_LOG_NEGATIVE).toBe(EDIT_ITEM_NEGATIVE);
+
+    expect(quickLogValidationError({ ...emptyQuickLogForm(), fat: 'lots' })).toBe(
+      QUICK_LOG_INVALID_NUMBER,
+    );
+    expect(quickLogValidationError({ ...emptyQuickLogForm(), calories: '-500' })).toBe(
+      QUICK_LOG_NEGATIVE,
+    );
+    // Unparseable wins when both are present — it is the more fundamental problem.
+    expect(quickLogValidationError({ ...emptyQuickLogForm(), calories: '-500', fat: 'lots' })).toBe(
+      QUICK_LOG_INVALID_NUMBER,
+    );
+    expect(quickLogValidationError({ ...emptyQuickLogForm(), name: 'Oats' })).toBeNull();
+  });
+
+  it('leaves quickLogHasContent behaviour unchanged for blank optional macros', () => {
+    const nameOnly = { ...emptyQuickLogForm(), name: 'Oats' };
+    expect(quickLogHasContent(nameOnly)).toBe(true);
+    expect(quickLogInvalidFields(nameOnly)).toEqual([]);
+    expect(quickLogNegativeFields(nameOnly)).toEqual([]);
+    expect(quickLogValidationError(nameOnly)).toBeNull();
+    expect(quickLogHasContent(emptyQuickLogForm())).toBe(false);
+  });
+});
+
+describe('toMealHistoryEntry', () => {
+  it('keeps comma-decimal macros instead of dropping them (CW-519)', () => {
+    // The decimal-pad keyboard on a comma-decimal device emits ',' as its only
+    // separator, so raw Number('27,5') was NaN and the macro vanished from the
+    // saved history entry while the upload itself was correct.
+    const entry = toMealHistoryEntry({
+      ...emptyQuickLogForm(),
+      name: 'Oats',
+      calories: '320',
+      protein: '27,5',
+      carbs: '45,25',
+      fat: '8,5',
+    });
+
+    expect(entry).toEqual({
+      name: 'Oats',
+      calories: 320,
+      protein: 27.5,
+      carbs: 45.25,
+      fat: 8.5,
+    });
+  });
+
+  it('accepts grouped thousands in either convention', () => {
+    expect(
+      toMealHistoryEntry({ ...emptyQuickLogForm(), name: 'Feast', calories: '1 234,5' }).calories,
+    ).toBe(1234.5);
+    expect(
+      toMealHistoryEntry({ ...emptyQuickLogForm(), name: 'Feast', calories: '1.234,56' }).calories,
+    ).toBe(1234.56);
+    expect(
+      toMealHistoryEntry({ ...emptyQuickLogForm(), name: 'Feast', calories: '1,234.56' }).calories,
+    ).toBe(1234.56);
+  });
+
+  it('still parses dot decimals and plain integers', () => {
+    const entry = toMealHistoryEntry({
+      ...emptyQuickLogForm(),
+      name: 'Oats',
+      calories: '320',
+      protein: '18.5',
+      carbs: '45',
+      fat: '8.25',
+    });
+
+    expect(entry).toEqual({
+      name: 'Oats',
+      calories: 320,
+      protein: 18.5,
+      carbs: 45,
+      fat: 8.25,
+    });
+  });
+
+  it('preserves the > 0 rule: zero, negative, blank and unparseable are omitted', () => {
+    const entry = toMealHistoryEntry({
+      ...emptyQuickLogForm(),
+      name: 'Oats',
+      calories: '0',
+      protein: '-5',
+      carbs: '',
+      fat: 'abc',
+    });
+
+    expect(entry).toEqual({ name: 'Oats' });
+    expect(entry.calories).toBeUndefined();
+    expect(entry.protein).toBeUndefined();
+    expect(entry.carbs).toBeUndefined();
+    expect(entry.fat).toBeUndefined();
+  });
+
+  it('passes the name through untouched for saveMealToHistory to trim', () => {
+    expect(toMealHistoryEntry({ ...emptyQuickLogForm(), name: '  Oats  ' }).name).toBe('  Oats  ');
   });
 });

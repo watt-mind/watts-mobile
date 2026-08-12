@@ -1,4 +1,5 @@
 import { addLocalMonthsYmd, isValidCalendarYmd } from '@/src/features/log/mapLogForm';
+import { ymdToWireDate } from '@/src/lib/wireDate';
 
 import type { CreateEventInput, EventPriority } from './types';
 
@@ -32,10 +33,6 @@ export function defaultEventDateYmd(monthsAhead = 2): string {
   return addLocalMonthsYmd(monthsAhead);
 }
 
-function ymdToIsoNoon(ymd: string): string {
-  return new Date(`${ymd}T12:00:00.000Z`).toISOString();
-}
-
 export function validateEventCreateForm(values: EventCreateFormValues): string | null {
   if (!values.title.trim()) return 'Enter an event title.';
   const date = values.date.trim();
@@ -48,7 +45,7 @@ export function validateEventCreateForm(values: EventCreateFormValues): string |
 export function buildCreateEventInput(values: EventCreateFormValues): CreateEventInput {
   const input: CreateEventInput = {
     title: values.title.trim(),
-    date: ymdToIsoNoon(values.date.trim()),
+    date: ymdToWireDate(values.date.trim()),
   };
   if (values.type.trim()) input.type = values.type.trim();
   if (values.priority) input.priority = values.priority;

@@ -2,9 +2,9 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { useAuth } from '@/src/auth/AuthContext';
 
+import { advanceActivationStatus } from './advanceStatus';
 import { fetchActivationStatus } from './api';
 import { activationIdentity } from './connectLater';
-import { mergeActivationAdvance } from './mapStatus';
 import type { ActivationStatus } from './types';
 
 export const activationStatusQueryKey = ['activation', 'onboarding-status'] as const;
@@ -26,9 +26,9 @@ export function useInvalidateActivationStatus() {
 }
 
 /**
- * Optimistically patch activation status, then refetch.
- * Re-applies the forward patch after refetch so a lagging server cannot bounce
- * wizard layout / ActivationGate back to a completed step.
+ * Optimistically patch activation status and return immediately so the caller
+ * can navigate; the refetch runs in the background. See advanceStatus.ts for
+ * why navigation must never wait on it.
  */
 export function useAdvanceActivationStatus() {
   const client = useQueryClient();
@@ -37,17 +37,11 @@ export function useAdvanceActivationStatus() {
 
   return async (patch: Partial<ActivationStatus>) => {
     const key = identity ? ([...activationStatusQueryKey, identity] as const) : null;
-    if (key) {
-      client.setQueryData<ActivationStatus>(key, (prev) =>
-        prev ? mergeActivationAdvance(prev, patch) : prev,
-      );
-    }
-    await client.invalidateQueries({ queryKey: activationStatusQueryKey });
-    if (key) {
-      client.setQueryData<ActivationStatus>(key, (prev) =>
-        prev ? mergeActivationAdvance(prev, patch) : prev,
-      );
-    }
+    await advanceActivationStatus(patch, {
+      client,
+      cacheKey: key,
+      invalidateKey: activationStatusQueryKey,
+    });
   };
 }
 

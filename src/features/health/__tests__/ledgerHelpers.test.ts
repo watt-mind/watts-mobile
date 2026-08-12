@@ -72,6 +72,7 @@ describe('ledgerHelpers', () => {
     expect(row.attemptCount).toBe(1);
     row = completeLedgerSuccess(row, { at: '2026-07-20T10:01:00Z' });
     expect(row.status).toBe('synced');
+    row = beginLedgerAttempt(row, '2026-07-20T10:01:30Z');
     row = completeLedgerFailure(row, 'network down');
     expect(row.status).toBe('failed');
     expect(row.lastError).toContain('network');
@@ -79,6 +80,33 @@ describe('ledgerHelpers', () => {
     expect(row.status).toBe('pending');
     expect(row.lastAttemptAt).toBe('2026-07-20T10:02:00Z');
     expect(row.lastError).toBeUndefined();
+  });
+
+  // CW-478: the backoff must count consecutive failures, so a success clears the
+  // counter. Without this, today's wellness row (re-uploaded every pass) exhausts
+  // MAX_AUTO_SYNC_ATTEMPTS while perfectly healthy.
+  it('resets the attempt counter on success', () => {
+    let row = item({ id: 'wellness:2026-07-20', kind: 'wellness', attemptCount: 12 });
+    row = beginLedgerAttempt(row, '2026-07-20T10:00:00Z');
+    expect(row.attemptCount).toBe(13);
+    row = completeLedgerSuccess(row, { at: '2026-07-20T10:01:00Z' });
+    expect(row.attemptCount).toBe(0);
+
+    // The next failure therefore starts a fresh consecutive-failure streak.
+    row = completeLedgerFailure(beginLedgerAttempt(row, '2026-07-20T10:02:00Z'), 'network down');
+    expect(row.status).toBe('failed');
+    expect(row.attemptCount).toBe(1);
+  });
+
+  // CW-461: a synced item must never be downgraded by an unrelated failure.
+  it('never downgrades an already-synced item to failed', () => {
+    const synced = completeLedgerSuccess(item({ id: 'wellness:2026-07-20', kind: 'wellness' }), {
+      at: '2026-07-20T10:00:00Z',
+    });
+    const after = completeLedgerFailure(synced, 'Health Connect changes drain error');
+    expect(after.status).toBe('synced');
+    expect(after.lastError).toBeUndefined();
+    expect(after).toBe(synced);
   });
 
   it('applies retention caps', () => {

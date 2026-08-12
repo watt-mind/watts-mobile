@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   bucketHealthConnectSleep,
   bucketHealthKitSleep,
+  clipHcSleepSessionToWindow,
   sleepWindowForDate,
   type HcSleepSession,
 } from '../readers/sleepShared';
@@ -151,6 +152,81 @@ describe('bucketHealthKitSleep', () => {
   it('returns null when nothing is asleep', () => {
     expect(bucketHealthKitSleep([hkSample(2, 0, 2)])).toBeNull();
     expect(bucketHealthKitSleep([])).toBeNull();
+  });
+});
+
+// CW-480: sessions are selected by intersection with the noon-to-noon window,
+// so they must be clipped to it — otherwise sleep crossing noon is counted in
+// full against both adjacent dates.
+describe('clipHcSleepSessionToWindow', () => {
+  const day = sleepWindowForDate('2026-07-21');
+  const next = sleepWindowForDate('2026-07-22');
+  const winStart = day.start.getTime();
+  const winEnd = day.end.getTime();
+
+  /** 08:00–15:00 on 2026-07-21 — a shift worker's sleep, crossing the noon bound. */
+  const crossing: HcSleepSession = {
+    start: new Date(2026, 6, 21, 8, 0, 0, 0).getTime(),
+    end: new Date(2026, 6, 21, 15, 0, 0, 0).getTime(),
+    stages: [
+      {
+        stage: 4,
+        startTime: new Date(2026, 6, 21, 8, 0, 0, 0).toISOString(),
+        endTime: new Date(2026, 6, 21, 15, 0, 0, 0).toISOString(),
+      },
+    ],
+  };
+
+  it('splits a session crossing noon between the two dates instead of double-counting', () => {
+    const onDay = clipHcSleepSessionToWindow(crossing, winStart, winEnd);
+    const onNext = clipHcSleepSessionToWindow(crossing, next.start.getTime(), next.end.getTime());
+
+    expect(bucketHealthConnectSleep([onDay!])?.sleepSecs).toBe(4 * 3600); // 08:00–12:00
+    expect(bucketHealthConnectSleep([onNext!])?.sleepSecs).toBe(3 * 3600); // 12:00–15:00
+
+    const total =
+      bucketHealthConnectSleep([onDay!])!.sleepSecs +
+      bucketHealthConnectSleep([onNext!])!.sleepSecs;
+    expect(total).toBe(7 * 3600); // the session's real length, counted exactly once
+  });
+
+  it('leaves an ordinary overnight session untouched', () => {
+    const overnight: HcSleepSession = {
+      start: new Date(2026, 6, 20, 23, 0, 0, 0).getTime(),
+      end: new Date(2026, 6, 21, 7, 0, 0, 0).getTime(),
+      stages: [
+        {
+          stage: 5,
+          startTime: new Date(2026, 6, 20, 23, 0, 0, 0).toISOString(),
+          endTime: new Date(2026, 6, 21, 7, 0, 0, 0).toISOString(),
+        },
+      ],
+    };
+    const clipped = clipHcSleepSessionToWindow(overnight, winStart, winEnd);
+    expect(clipped?.start).toBe(overnight.start);
+    expect(clipped?.end).toBe(overnight.end);
+    expect(bucketHealthConnectSleep([clipped!])?.sleepDeepSecs).toBe(8 * 3600);
+  });
+
+  it('returns null when the session falls entirely outside the window', () => {
+    const later: HcSleepSession = {
+      start: new Date(2026, 6, 22, 1, 0, 0, 0).getTime(),
+      end: new Date(2026, 6, 22, 6, 0, 0, 0).getTime(),
+    };
+    expect(clipHcSleepSessionToWindow(later, winStart, winEnd)).toBeNull();
+  });
+
+  it('returns null for a session touching only the closing boundary instant', () => {
+    const atNoon: HcSleepSession = { start: winEnd, end: winEnd + 3600_000 };
+    expect(clipHcSleepSessionToWindow(atNoon, winStart, winEnd)).toBeNull();
+  });
+
+  it('drops stages outside the window and keeps the stageless shape working', () => {
+    const stageless: HcSleepSession = { start: winStart - 3600_000, end: winStart + 3600_000 };
+    const clipped = clipHcSleepSessionToWindow(stageless, winStart, winEnd);
+    expect(clipped?.start).toBe(winStart);
+    expect(clipped?.stages).toBeUndefined();
+    expect(bucketHealthConnectSleep([clipped!])?.sleepSecs).toBe(3600);
   });
 });
 

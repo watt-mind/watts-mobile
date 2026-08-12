@@ -1,11 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import type { ActivityListItem, PlannedListItem } from '@/src/features/activity/types';
-import {
-  computeWeekGlance,
-  localDateKey,
-  weekRangeContaining,
-} from '@/src/features/today/weekGlance';
+import { localDateKey, weekRangeContaining } from '@/src/lib/date';
+import { computeWeekGlance, resolveWeekGlanceStripState } from '@/src/features/today/weekGlance';
 
 function activity(
   partial: Partial<ActivityListItem> & { date: string; durationSec?: number; tss?: number },
@@ -87,5 +84,85 @@ describe('weekGlance', () => {
     const plannedDay = glance.days.find((d) => d.dateKey === '2026-07-16')!;
     expect(done.height).toBeGreaterThan(0.5);
     expect(plannedDay.height).toBeGreaterThan(0.5);
+  });
+});
+
+describe('resolveWeekGlanceStripState (CW-489)', () => {
+  const now = new Date(2026, 6, 18, 12, 0, 0); // Saturday
+
+  it('reports loading while the week-ranged workouts query is still pending', () => {
+    const state = resolveWeekGlanceStripState({
+      workouts: undefined,
+      planned: undefined,
+      workoutsPending: true,
+      now,
+    });
+    expect(state.status).toBe('loading');
+  });
+
+  it('is ready (not loading) once the query settles with no workouts', () => {
+    const state = resolveWeekGlanceStripState({
+      workouts: [],
+      planned: undefined,
+      workoutsPending: false,
+      now,
+    });
+    expect(state.status).toBe('ready');
+    if (state.status !== 'ready') throw new Error('expected ready');
+    expect(state.glance.summaryLine).toBe('This week: no load logged yet');
+  });
+
+  it('is ready when the query errored out (no data, not pending)', () => {
+    const state = resolveWeekGlanceStripState({
+      workouts: undefined,
+      planned: [planned({ date: '2026-07-17T10:00:00', tss: 70 })],
+      workoutsPending: false,
+      now,
+    });
+    expect(state.status).toBe('ready');
+  });
+
+  it('sums the WHOLE week — 15 multi-sport sessions since Monday, not the last 10', () => {
+    // Mon–Sat, 3 sessions/day for the first five days: a fixed 10-item recent list
+    // would only ever reach back to Thursday.
+    const days = ['2026-07-13', '2026-07-14', '2026-07-15', '2026-07-16', '2026-07-17'];
+    const workouts = days.flatMap((date, dayIdx) =>
+      ['Swim', 'Ride', 'Run'].map((type, i) =>
+        activity({
+          id: `w-${dayIdx}-${i}`,
+          date: `${date}T0${6 + i}:00:00`,
+          type,
+          durationSec: 2400,
+          tss: 45,
+        }),
+      ),
+    );
+
+    const full = resolveWeekGlanceStripState({
+      workouts,
+      planned: undefined,
+      workoutsPending: false,
+      now,
+    });
+    if (full.status !== 'ready') throw new Error('expected ready');
+    expect(full.glance.doneTss).toBe(15 * 45);
+    expect(full.glance.doneDurationSec).toBe(15 * 2400);
+    expect(full.glance.doneDurationLabel).toBe('10h');
+    // Every logged day has a completed bar — Mon–Wed are no longer phantom rest days.
+    for (const dateKey of days) {
+      expect(full.glance.days.find((d) => d.dateKey === dateKey)?.hasDone).toBe(true);
+    }
+
+    // The old behaviour: only the 10 most recent sessions ever reached the strip.
+    const capped = resolveWeekGlanceStripState({
+      workouts: workouts.slice(-10),
+      planned: undefined,
+      workoutsPending: false,
+      now,
+    });
+    if (capped.status !== 'ready') throw new Error('expected ready');
+    expect(capped.glance.doneTss).toBe(10 * 45);
+    expect(capped.glance.days.find((d) => d.dateKey === '2026-07-13')?.hasDone).toBe(false);
+    expect(capped.glance.doneTss).toBeLessThan(full.glance.doneTss);
   });
 });

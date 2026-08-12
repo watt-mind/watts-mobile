@@ -1,13 +1,14 @@
 /* Hallmark · genre: modern-minimal · design-system: docs/DESIGN.md · designed-as-app */
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, Text, TextInput, View } from 'react-native';
+import { Alert, Pressable, Text, TextInput, View } from 'react-native';
 
 import { friendlyError } from '@/src/api/errors';
 import { useAuth } from '@/src/auth/AuthContext';
 import { showActionSheet } from '@/src/components/ActionSheet';
 import { Button } from '@/src/components/Button';
 import { AppSymbol } from '@/src/components/AppSymbol';
+import { Spinner } from '@/src/components/Spinner';
 import { openInstanceWeb } from '@/src/features/account/openInstanceWeb';
 import { useAthleteProfileQuery } from '@/src/features/profile/useProfile';
 import { hapticError, hapticLight, hapticSuccess } from '@/src/lib/haptics';
@@ -16,15 +17,16 @@ import { useThemeColors } from '@/src/theme/useThemeColors';
 
 import { EditNutritionItemSheet } from './EditNutritionItemSheet';
 import { NutritionMacroExplainSheet } from './NutritionMacroExplainSheet';
+import { localDateYmd } from '@/src/lib/date';
 import {
   apiMealTypeLabel,
   canExplainMetric,
   emptyQuickLogForm,
   formatMacroGrams,
   goalProgressPct,
-  localDateYmd,
   nutritionWebPath,
   quickLogHasContent,
+  quickLogValidationError,
   toNutritionUploadPayload,
 } from './mapNutrition';
 import {
@@ -287,6 +289,14 @@ export function NutritionSection({ entriesMode = 'full' }: NutritionSectionProps
       setFormError('Enter a name or at least one macro before saving.');
       return;
     }
+    // Same rules as the edit sheet (CW-349): unparseable or negative macros are
+    // rejected here rather than posted as missing/negative values.
+    const validationError = quickLogValidationError(form);
+    if (validationError) {
+      hapticError();
+      setFormError(validationError);
+      return;
+    }
     setFormError(null);
     try {
       const payload = toNutritionUploadPayload(form);
@@ -423,9 +433,7 @@ export function NutritionSection({ entriesMode = 'full' }: NutritionSectionProps
         </Pressable>
       </View>
 
-      {isLoading && !today ? (
-        <ActivityIndicator className="mt-4" color={theme.brandOnSurface} />
-      ) : null}
+      {isLoading && !today ? <Spinner className="mt-4" /> : null}
 
       {isError ? (
         <View className="mt-3 rounded-xl border border-danger/40 bg-tint-error p-3">
@@ -691,9 +699,7 @@ export function NutritionSection({ entriesMode = 'full' }: NutritionSectionProps
           ))}
         </View>
 
-        {hydrationMutation.isPending ? (
-          <ActivityIndicator className="mt-2" color={theme.brandOnSurface} />
-        ) : null}
+        {hydrationMutation.isPending ? <Spinner className="mt-2" /> : null}
         {hydrationError ? <Text className="mt-2 text-xs text-danger">{hydrationError}</Text> : null}
         {hydrationSaved ? (
           <Text className="mt-2 text-xs font-semibold text-success">{hydrationSaved}</Text>

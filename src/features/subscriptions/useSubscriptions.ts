@@ -1,10 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { fetchSubscriptionSummary, reconcileSubscription } from './api';
+import {
+  SUBSCRIPTION_OFFERINGS_KEY,
+  SUBSCRIPTION_SUMMARY_KEY,
+  subscriptionReconcileInvalidationKeys,
+} from './queryKeys';
 import { fetchStorePackages } from './revenueCat';
 
-export const SUBSCRIPTION_SUMMARY_KEY = ['subscription', 'summary'] as const;
-export const SUBSCRIPTION_OFFERINGS_KEY = ['subscription', 'offerings'] as const;
+// Re-exported so existing import sites keep working; `queryKeys.ts` owns them.
+export { SUBSCRIPTION_OFFERINGS_KEY, SUBSCRIPTION_SUMMARY_KEY };
 
 export function useSubscriptionSummary() {
   return useQuery({
@@ -29,11 +34,11 @@ export function useReconcileSubscription() {
     mutationFn: reconcileSubscription,
     onSuccess: async (summary) => {
       queryClient.setQueryData(SUBSCRIPTION_SUMMARY_KEY, summary);
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['today'] }),
-        queryClient.invalidateQueries({ queryKey: ['profile'] }),
-        queryClient.invalidateQueries({ queryKey: ['entitlements'] }),
-      ]);
+      await Promise.all(
+        subscriptionReconcileInvalidationKeys().map((queryKey) =>
+          queryClient.invalidateQueries({ queryKey }),
+        ),
+      );
     },
   });
 }

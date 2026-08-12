@@ -33,19 +33,51 @@ function asMealPattern(value: unknown): MealPatternItem[] {
     .filter((item): item is MealPatternItem => item != null);
 }
 
+/**
+ * User-facing message shown when the three quick-add volumes are not distinct.
+ * Exported so the settings form and the test suite share one string (CW-542).
+ */
+export const QUICK_ADD_DUPLICATE_VOLUMES_ERROR =
+  'Quick-add volumes must be three different values.';
+
+/**
+ * Pure validator for the quick-add volume fields. Returns a user-facing message
+ * when the volumes are not distinct, `null` otherwise.
+ *
+ * Kept here (rather than inside the form component) so it stays reachable by the
+ * vitest suite, which only collects pure `.test.ts` files under `src`.
+ */
+export function quickAddVolumesError(values: number[]): string | null {
+  const rounded = values
+    .map((value) => Math.round(Number(value)))
+    .filter((value) => Number.isFinite(value));
+  if (new Set(rounded).size !== rounded.length) return QUICK_ADD_DUPLICATE_VOLUMES_ERROR;
+  return null;
+}
+
 export function normalizeQuickAddVolumes(values: unknown): [number, number, number] {
   const fallback = [...DEFAULT_QUICK_ADD_VOLUMES] as [number, number, number];
   if (!Array.isArray(values)) return fallback;
 
-  const normalized = values
-    .map((value) => Math.round(Number(value)))
-    .filter((value) => Number.isFinite(value) && value >= 50 && value <= 2000)
+  const normalized = Array.from(
+    new Set(
+      values
+        .map((value) => Math.round(Number(value)))
+        .filter((value) => Number.isFinite(value) && value >= 50 && value <= 2000),
+    ),
+  )
     .slice(0, 3)
     .sort((a, b) => a - b);
 
-  while (normalized.length < 3) {
-    normalized.push(fallback[normalized.length] ?? 250);
+  // Backfill with the first default NOT already present. Indexing the defaults by
+  // position (the previous `fallback[normalized.length]`) reintroduced duplicates
+  // for payloads such as [750] or [500, 750] (CW-542). Three distinct defaults
+  // against fewer than three distinct kept values always leaves enough spares.
+  for (const candidate of fallback) {
+    if (normalized.length >= 3) break;
+    if (!normalized.includes(candidate)) normalized.push(candidate);
   }
+  normalized.sort((a, b) => a - b);
 
   return [normalized[0]!, normalized[1]!, normalized[2]!];
 }

@@ -1,3 +1,7 @@
+import { localDateYmd } from '@/src/lib/date';
+import { parseDecimal } from '@/src/lib/parseDecimal';
+
+import { EDIT_ITEM_INVALID_NUMBER, EDIT_ITEM_NEGATIVE } from './editNutritionItemForm';
 import type {
   ApiMealType,
   FuelingPlanAnalysis,
@@ -99,13 +103,6 @@ export function mapNutritionLoggedItems(row: Record<string, unknown>): Nutrition
 export function removeItemFromDay(day: NutritionDayTotals, itemId: string): NutritionDayTotals {
   const items = day.items.filter((item) => item.id !== itemId);
   return { ...day, items, isEmpty: items.length === 0 && day.waterMl === 0 };
-}
-
-export function localDateYmd(date = new Date()): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
 }
 
 export function emptyNutritionDay(date = localDateYmd()): NutritionDayTotals {
@@ -315,11 +312,62 @@ export function pickTodayNutrition(payload: unknown, today = localDateYmd()): Nu
   return empty;
 }
 
+/**
+ * Parse an optional quick-log numeric field. Comma decimals are accepted
+ * (CW-484) — `Number("27,5")` was NaN, so the item logged with calories but no
+ * carbs/protein/fat.
+ */
 function parseOptionalNumber(value: string): number | undefined {
-  const trimmed = value.trim();
-  if (!trimmed) return undefined;
-  const n = Number(trimmed);
-  return Number.isFinite(n) ? n : undefined;
+  const n = parseDecimal(value);
+  return n == null ? undefined : n;
+}
+
+export type QuickLogNumericField = 'calories' | 'protein' | 'carbs' | 'fat';
+
+const QUICK_LOG_NUMERIC_FIELDS = ['calories', 'protein', 'carbs', 'fat'] as const;
+
+/**
+ * Add and edit must agree on the rules for the same data (CW-349), so the quick-log
+ * messages are the edit sheet's constants rather than a second copy of the wording —
+ * changing one can no longer leave the other behind.
+ */
+export const QUICK_LOG_INVALID_NUMBER = EDIT_ITEM_INVALID_NUMBER;
+export const QUICK_LOG_NEGATIVE = EDIT_ITEM_NEGATIVE;
+
+/**
+ * Quick-log fields that were filled in but cannot be parsed. Callers should block
+ * the save and surface these rather than posting an item with missing macros.
+ */
+export function quickLogInvalidFields(form: NutritionQuickLogForm): QuickLogNumericField[] {
+  return QUICK_LOG_NUMERIC_FIELDS.filter(
+    (key) => form[key].trim() && parseOptionalNumber(form[key]) === undefined,
+  );
+}
+
+/**
+ * Quick-log fields that parse fine but are negative. Kept separate from
+ * {@link quickLogInvalidFields} so callers can tell "I could not read this" from
+ * "I read it and it cannot be negative" and show the right message.
+ */
+export function quickLogNegativeFields(form: NutritionQuickLogForm): QuickLogNumericField[] {
+  return QUICK_LOG_NUMERIC_FIELDS.filter((key) => {
+    const parsed = parseOptionalNumber(form[key]);
+    return parsed != null && parsed < 0;
+  });
+}
+
+/**
+ * The single validation gate for both quick-log save paths (`LogMealSheet.onSubmit`
+ * and `NutritionSection.onLogItem`). Returns the message to surface, or null when
+ * the form is safe to upload. A blank optional macro is "not provided", not an error.
+ *
+ * Unparseable is reported ahead of negative: it is the more fundamental problem, and
+ * a value we could not read has no sign to complain about.
+ */
+export function quickLogValidationError(form: NutritionQuickLogForm): string | null {
+  if (quickLogInvalidFields(form).length > 0) return QUICK_LOG_INVALID_NUMBER;
+  if (quickLogNegativeFields(form).length > 0) return QUICK_LOG_NEGATIVE;
+  return null;
 }
 
 export function emptyQuickLogForm(meal: MealSlot = 'SNACK'): NutritionQuickLogForm {
@@ -361,12 +409,54 @@ export function toNutritionUploadPayload(
   const carbs = parseOptionalNumber(form.carbs);
   const fat = parseOptionalNumber(form.fat);
 
-  if (calories != null) item.calories = Math.round(calories);
-  if (protein != null) item.protein = roundMacro(protein);
-  if (carbs != null) item.carbs = roundMacro(carbs);
-  if (fat != null) item.fat = roundMacro(fat);
+  // Defence in depth (CW-349): callers gate on quickLogValidationError first, but a
+  // negative macro must never reach the server — it silently decrements the day's
+  // totals, which is worse than a rejected save.
+  if (calories != null) item.calories = Math.max(0, Math.round(calories));
+  if (protein != null) item.protein = Math.max(0, roundMacro(protein));
+  if (carbs != null) item.carbs = Math.max(0, roundMacro(carbs));
+  if (fat != null) item.fat = Math.max(0, roundMacro(fat));
 
   return { date, items: [item] };
+}
+
+export type MealHistoryEntry = {
+  name: string;
+  calories?: number;
+  protein?: number;
+  carbs?: number;
+  fat?: number;
+};
+
+/**
+ * Build the meal-history record for a quick-log form.
+ *
+ * Extracted from `LogMealSheet.onSubmit` (CW-519): the history write still used raw
+ * `Number(form.protein)`, so on a comma-decimal device — where the decimal-pad's only
+ * separator key emits ',' — `Number('27,5')` was NaN and the macro was silently
+ * dropped from the saved entry. The upload alongside it parsed correctly (CW-349), so
+ * the day's totals looked right and nothing warned the user; the loss only surfaced
+ * later, when re-picking the meal from history prefilled a short form.
+ *
+ * Parsing goes through the same `parseOptionalNumber` → `parseDecimal` path as
+ * `toNutritionUploadPayload` so the two writes cannot drift apart again. Only the
+ * parser changed: a macro is still recorded only when it is strictly greater than
+ * zero, and blank, zero, negative and unparseable values all stay `undefined`.
+ */
+export function toMealHistoryEntry(form: NutritionQuickLogForm): MealHistoryEntry {
+  const positive = (value: string): number | undefined => {
+    const n = parseOptionalNumber(value);
+    return n != null && n > 0 ? n : undefined;
+  };
+
+  return {
+    // Left untrimmed on purpose — `saveMealToHistory` trims and dedupes the name itself.
+    name: form.name,
+    calories: positive(form.calories),
+    protein: positive(form.protein),
+    carbs: positive(form.carbs),
+    fat: positive(form.fat),
+  };
 }
 
 export function nutritionWebPath(): string {

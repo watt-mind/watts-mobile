@@ -1,9 +1,10 @@
 /* Hallmark · genre: modern-minimal · design-system: docs/DESIGN.md */
 import { useRef, useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, Text, View } from 'react-native';
+import { Modal, Pressable, Text, View } from 'react-native';
 
 import { AppSymbol } from '@/src/components/AppSymbol';
 import { Button } from '@/src/components/Button';
+import { Spinner } from '@/src/components/Spinner';
 import { lookupFoodBarcode, type FoodItemResult } from './api';
 import { hapticError, hapticLight, hapticSuccess } from '@/src/lib/haptics';
 import { useThemeColors } from '@/src/theme/useThemeColors';
@@ -166,7 +167,7 @@ function NativeScannerContent({
             {/* Status Banner */}
             {isSearching ? (
               <View className="mt-6 flex-row items-center gap-2 rounded-xl bg-black/80 px-4 py-2.5">
-                <ActivityIndicator size="small" color={theme.brandOnSurface} />
+                <Spinner size="small" />
                 <Text className="text-sm font-medium" style={{ color: '#ffffff' }}>
                   Looking up barcode...
                 </Text>

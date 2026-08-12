@@ -15,6 +15,8 @@ import {
   requestHealthAuth,
   type HealthStatusResult,
 } from '@/src/features/log/healthAuth';
+import { resolveEnableSyncOutcome } from '@/src/features/health/enableSyncOutcome';
+import { canPromptHealthKitSheet } from '@/src/features/health/healthKitAccess';
 import { runHealthSyncPass } from '@/src/features/health/orchestrator';
 import { useHealthSyncPreferences } from '@/src/features/health/useHealthSyncPreferences';
 import { hapticError, hapticLight, hapticSuccess } from '@/src/lib/haptics';
@@ -28,11 +30,19 @@ function StatusBadge({ status }: { status: string }) {
   let label = 'Not connected';
   let dotBg = 'bg-text-muted';
 
-  if (status === 'connected' || status === 'unnecessary') {
+  if (status === 'connected') {
     bg = 'bg-success/10 border border-success/25';
     text = 'text-success';
     label = 'Connected';
     dotBg = 'bg-success';
+  } else if (status === 'unnecessary') {
+    // Access was requested, but HealthKit will not say whether reads were
+    // granted and no probe read came back. Claiming "Connected" here showed a
+    // green badge to athletes who had denied everything (CW-571).
+    bg = 'bg-modify/10 border border-modify/40';
+    text = 'text-modify';
+    label = 'No data readable';
+    dotBg = 'bg-modify';
   } else if (status === 'partially_connected') {
     bg = 'bg-modify/10 border border-modify/40';
     text = 'text-modify';
@@ -96,7 +106,8 @@ export default function HealthSyncSettingsScreen() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const [noDataFound, setNoDataFound] = useState(false);
+  /** Banner copy when a completed pass read nothing — set by both the enable toggle and "Sync now" (CW-336). */
+  const [noDataHint, setNoDataHint] = useState<string | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [authStatus, setAuthStatus] = useState<HealthStatusResult>({ status: 'loading' });
 
@@ -179,8 +190,12 @@ export default function HealthSyncSettingsScreen() {
     hapticLight();
     setBusy(true);
     setSyncError(null);
+    setNoDataHint(null);
     try {
-      await setEnabled(enabled);
+      // Enabling succeeds even when the first pass finds nothing — that is a
+      // warning, not a failure, so the toggle stays on and only the hint appears.
+      const { syncPass } = await setEnabled(enabled);
+      setNoDataHint(resolveEnableSyncOutcome(syncPass, Platform.OS).hint);
       hapticSuccess();
     } catch (err) {
       setSyncError(err instanceof Error ? err.message : 'Could not update health sync');
@@ -194,8 +209,10 @@ export default function HealthSyncSettingsScreen() {
     hapticLight();
     setBusy(true);
     setSyncError(null);
+    setNoDataHint(null);
     try {
-      await setWorkouts(enabled);
+      const { syncPass } = await setWorkouts(enabled);
+      setNoDataHint(resolveEnableSyncOutcome(syncPass, Platform.OS).hint);
       hapticSuccess();
     } catch (err) {
       setSyncError(err instanceof Error ? err.message : 'Could not update workout sync');
@@ -211,7 +228,7 @@ export default function HealthSyncSettingsScreen() {
     setSyncError(null);
     try {
       const result = await runHealthSyncPass({ force: true });
-      setNoDataFound(!result.skipped && !result.foundLocalData);
+      setNoDataHint(resolveEnableSyncOutcome(result, Platform.OS).hint);
       const failed =
         result.wellnessFailed > 0 ||
         result.workoutsFailed > 0 ||
@@ -276,7 +293,7 @@ export default function HealthSyncSettingsScreen() {
 
               {isIOS && (
                 <View className="mt-6 gap-3 border-t border-border/80 pt-5">
-                  {authStatus.status === 'should_request' ? (
+                  {canPromptHealthKitSheet(authStatus.status) ? (
                     <Button
                       label="Connect Apple Health"
                       onPress={() => void handleConnect()}
@@ -284,22 +301,33 @@ export default function HealthSyncSettingsScreen() {
                     />
                   ) : (
                     <>
-                      <View className="rounded-lg border border-border/50 bg-surface/40 p-4">
-                        <Text className="mb-2 text-xs font-semibold uppercase tracking-wider text-brand">
-                          Permissions Info
-                        </Text>
-                        <Text className="leading-4.5 text-xs text-text-muted">
-                          iOS usually shows the consent sheet only once. If you denied something,
-                          turn it back on in Health → Profile → Apps → Coach Watts. Request access
-                          again can still help when Coach Watts adds new data types.
-                        </Text>
-                      </View>
-                      <Button
-                        label="Request access again"
-                        variant="secondary"
-                        onPress={() => void handleConnect()}
-                        loading={busy}
-                      />
+                      {authStatus.status === 'unnecessary' ? (
+                        <View className="rounded-lg border border-modify/40 bg-modify/10 p-4">
+                          <Text className="mb-2 text-xs font-semibold uppercase tracking-wider text-modify">
+                            Nothing readable yet
+                          </Text>
+                          <Text className="leading-4.5 text-xs text-text-muted">
+                            Coach Watts has asked for access, but no Health data can be read. Either
+                            this device has no data yet, or read access was declined. iOS shows the
+                            consent sheet only once, so asking again does nothing.
+                            {'\n\n'}
+                            Open Apple Health below and check Profile → Apps → Coach Watts. If Coach
+                            Watts is not listed there, delete and reinstall the app — that resets
+                            Apple Health access and brings the consent sheet back.
+                          </Text>
+                        </View>
+                      ) : (
+                        <View className="rounded-lg border border-border/50 bg-surface/40 p-4">
+                          <Text className="mb-2 text-xs font-semibold uppercase tracking-wider text-brand">
+                            Permissions Info
+                          </Text>
+                          <Text className="leading-4.5 text-xs text-text-muted">
+                            iOS shows the consent sheet only once, so Coach Watts cannot re-ask for
+                            access. To change what it can read, open Apple Health below and go to
+                            Profile → Apps → Coach Watts.
+                          </Text>
+                        </View>
+                      )}
                       <Button
                         label="Open Apple Health"
                         variant="secondary"
@@ -447,12 +475,8 @@ export default function HealthSyncSettingsScreen() {
                     loading={syncing}
                     variant="secondary"
                   />
-                  {noDataFound && (
-                    <Text className="leading-4.5 text-xs text-modify">
-                      {isIOS
-                        ? 'No Health data was found on this device. If you granted access recently, open Health → Profile → Apps → Coach Watts and check that read access is on.'
-                        : 'No Health Connect data was found on this device. Check that your fitness apps write to Health Connect and that Coach Watts has read access.'}
-                    </Text>
+                  {noDataHint && (
+                    <Text className="leading-4.5 text-xs text-modify">{noDataHint}</Text>
                   )}
                 </>
               ) : null}

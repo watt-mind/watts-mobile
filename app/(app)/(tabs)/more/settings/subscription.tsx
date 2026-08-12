@@ -84,7 +84,10 @@ export default function SubscriptionScreen() {
   return (
     <>
       <Stack.Screen options={{ title: 'Subscription' }} />
-      <SafeAreaView style={{ flex: 1, backgroundColor: theme.surface }}>
+      <SafeAreaView
+        testID="subscription-screen"
+        style={{ flex: 1, backgroundColor: theme.surface }}
+      >
         <ScrollView
           ref={scrollRef}
           className="flex-1 bg-surface"
@@ -288,6 +291,7 @@ export default function SubscriptionScreen() {
 
           <View className="mt-6 items-center">
             <Pressable
+              testID="subscription-billing-support"
               accessibilityRole="link"
               accessibilityLabel="Contact billing support"
               hitSlop={8}

@@ -8,7 +8,8 @@ import { Platform, Text, useColorScheme, View } from 'react-native';
 import { AnimatedPressable } from '@/src/components/AnimatedPressable';
 import { BottomSheet } from '@/src/components/BottomSheet';
 import { Button } from '@/src/components/Button';
-import { addLocalMonthsYmd, isValidCalendarYmd, localDateYmd } from '@/src/features/log/mapLogForm';
+import { localDateYmd } from '@/src/lib/date';
+import { addLocalMonthsYmd, isValidCalendarYmd } from '@/src/features/log/mapLogForm';
 import { hapticLight } from '@/src/lib/haptics';
 import { useThemeColors } from '@/src/theme/useThemeColors';
 
