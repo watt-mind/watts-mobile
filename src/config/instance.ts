@@ -1,20 +1,15 @@
 import { getItemAsync, setItemAsync } from '@/src/storage/secureStorage';
 
 import { DEFAULT_INSTANCE_URL } from './env';
+import { assertInstanceTransportAllowed, normalizeInstanceUrl } from './instanceTransport';
 
 const INSTANCE_KEY = 'cw.instanceBaseUrl';
 
-export function normalizeInstanceUrl(input: string): string {
-  const trimmed = input.trim();
-  if (!trimmed) return '';
-
-  let url = trimmed;
-  if (!/^https?:\/\//i.test(url)) {
-    url = `https://${url}`;
-  }
-
-  return url.replace(/\/+$/, '');
-}
+/**
+ * Re-exported from `./instanceTransport` (the pure module) so the transport
+ * policy and its callers share one normalization implementation.
+ */
+export { normalizeInstanceUrl };
 
 export async function getInstanceUrl(): Promise<string | null> {
   return getItemAsync(INSTANCE_KEY);
@@ -25,6 +20,9 @@ export async function setInstanceUrl(url: string): Promise<string> {
   if (!normalized) {
     throw new Error('Instance URL is required');
   }
+  // Last line of defence: an insecure public URL must never reach storage, from
+  // any caller — once persisted every request would leak the Bearer token.
+  assertInstanceTransportAllowed(normalized);
   await setItemAsync(INSTANCE_KEY, normalized);
   return normalized;
 }
@@ -39,6 +37,10 @@ export async function validateInstanceReachability(baseUrl: string): Promise<voi
   if (!normalized) {
     throw new Error('Enter a valid instance URL');
   }
+
+  // Before the fetch: refuse plaintext to a public host outright rather than
+  // proving a cleartext endpoint reachable and then handing it a token.
+  assertInstanceTransportAllowed(normalized);
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8000);
