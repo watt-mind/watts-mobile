@@ -22,7 +22,7 @@ concurrency:
 jobs:
   quality:
     name: Quality gates
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux]
     timeout-minutes: 20
     env:
       CI: 'true'
@@ -67,7 +67,7 @@ jobs:
   release-policy:
     name: develop to master only
     if: github.event_name == 'pull_request' && github.base_ref == 'master'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux]
     timeout-minutes: 5
     steps:
       - name: Require the develop integration branch

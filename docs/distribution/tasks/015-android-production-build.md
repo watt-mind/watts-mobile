@@ -1,6 +1,6 @@
 # 015 — Android production AAB + upload (local Gradle)
 
-**Area:** build · **Priority:** medium · **Status:** in-progress
+**Area:** build · **Priority:** medium · **Status:** done
 
 **Depends on:** [011](./011-play-console-app.md), [014](./014-eas-android-credentials.md)
 
@@ -17,17 +17,17 @@ Produce a signed Play AAB and land it on Internal testing so listed testers can 
 
 ## Steps
 
-1. [ ] Bump user-facing version if needed (`pnpm release:patch` / etc.).
-2. [ ] Bump Android **versionCode** for every new Play upload (Play rejects reuse). Log in [log.md](../log.md).
-3. [ ] Confirm production `.env` (Sentry + Maps; no `EXPO_PUBLIC_E2E_*`) — [014](./014-eas-android-credentials.md).
+1. [x] Bump user-facing version if needed (`pnpm release:patch` / etc.) — **0.1.1** unchanged.
+2. [x] Bump Android **versionCode** for every new Play upload (Play rejects reuse). Log in [log.md](../log.md) — **vc6** (2026-08-09).
+3. [x] Confirm production `.env` (Sentry + Maps; no `EXPO_PUBLIC_E2E_*`) — [014](./014-eas-android-credentials.md).
 4. [x] Preferred one-shot (Mac / Mini):
    ```bash
    pnpm release:android:internal -- --version-code <n> --upload-internal
    ```
    Or build only, then Console upload / `--upload-internal --aab …`. Manual Gradle path still OK: `expo prebuild -p android --clean` → `./gradlew bundleRelease` — signing via [014](./014-eas-android-credentials.md).
 5. [ ] Ensure Internal **testers** exist and have the opt-in link — [../play-internal-testing.md](../play-internal-testing.md).
-6. [ ] Log `versionName` + `versionCode` in [log.md](../log.md).
-7. [ ] Smoke on device — [016](./016-play-internal-test-smoke.md); branded icon/splash ([../../store-checklist.md](../../store-checklist.md)).
+6. [x] Log `versionName` + `versionCode` in [log.md](../log.md).
+7. [ ] Smoke on device — [016](./016-play-internal-test-smoke.md); branded icon/splash ([../../store-checklist.md](../../store-checklist.md)) — release APK smoke on emulator 2026-08-09; Play-install smoke still open.
 
 ## Done when
 

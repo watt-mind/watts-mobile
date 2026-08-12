@@ -10,7 +10,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.coachwatts.app",
-      "buildNumber": "3",
+      "buildNumber": "4",
       "icon": "./assets/images/icon.png",
       "associatedDomains": ["applinks:coachwatts.com"],
       "infoPlist": {
@@ -37,7 +37,7 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "package": "com.coachwatts.app",
-      "versionCode": 5,
+      "versionCode": 6,
       "permissions": [
         "android.permission.health.READ_SLEEP",
         "android.permission.health.READ_WEIGHT",
