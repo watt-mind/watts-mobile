@@ -34,6 +34,7 @@
     "release:android:github": "node scripts/publish-android-github-release.mjs",
     "release:android:github:local": "node scripts/publish-android-github-release.mjs --local",
     "release:android:internal": "node scripts/android-internal-release.mjs",
+    "release:android:listing-upload": "node scripts/play-listing-upload.mjs",
     "prepare": "husky"
   },
   "lint-staged": {
