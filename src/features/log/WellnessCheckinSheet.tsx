@@ -179,7 +179,7 @@ export function WellnessCheckinSheet({
         <View
           testID="wellness-checkin-sheet"
           className="rounded-t-3xl bg-surface px-6 pb-10 pt-4"
-          style={{ maxHeight: '90%' }}
+          style={{ maxHeight: '85%' }}
         >
           <View className="mb-4 h-1 w-10 self-center rounded-full bg-border-strong" />
 
