@@ -20,7 +20,9 @@ export function NutritionDetailSheet({ visible, onClose }: NutritionDetailSheetP
           accessibilityRole="button"
           accessibilityLabel="Dismiss"
         />
-        <View className="rounded-t-3xl bg-surface px-6 pb-10 pt-4" style={{ maxHeight: '90%' }}>
+        {/* 85% cap (not 90) keeps a tappable scrim band below the status bar, which
+            swallows taps in the top ~50dp of the edge-to-edge window (CW-622). */}
+        <View className="rounded-t-3xl bg-surface px-6 pb-10 pt-4" style={{ maxHeight: '85%' }}>
           {/* Sheet Handle */}
           <View className="mb-4 h-1 w-10 self-center rounded-full bg-border-strong" />
 
