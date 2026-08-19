@@ -77,7 +77,7 @@
     "expo-symbols": "~57.0.1",
     "expo-task-manager": "~57.0.6",
     "expo-web-browser": "~57.0.2",
-    "expo-widgets": "~57.0.6",
+    "expo-widgets": "~57.0.8",
     "nativewind": "^4.2.6",
     "react": "19.2.3",
     "react-dom": "19.2.3",
