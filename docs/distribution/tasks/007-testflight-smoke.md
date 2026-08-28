@@ -24,6 +24,8 @@ On a physical device or recent simulator with the TestFlight build:
 
 **Run notes (2026-08-09):** Release `expo run:ios --configuration Release` on iPhone 17 Pro sim (device archive IPA is not sim-installable). ASC build **0.1.1 (4)** confirmed **Ready to Submit**. Sign-out → Sign in reused existing IdP browser session (no in-app password). Demo account `coachwatts.play.review@gmail.com`.
 
+**Replacement candidate (2026-08-28):** **0.1.1 (6)** is **Ready to Submit** and available to internal group **WM**. Do not carry forward checks from build 4 or 5; repeat the complete matrix below on build 6. External group **ALPHA** has not been added.
+
 ## App Review authentication matrix
 
 Run every required row against the **exact uploaded TestFlight candidate**, not a simulator-only Release build. Record device, OS, provider, and result in the distribution log.
