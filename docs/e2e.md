@@ -19,6 +19,26 @@ Unit logic stays on Vitest. Maestro covers cold launch, tab navigation, and open
 
 **Rule of thumb:** if a bug can be caught by asserting a mapper or pure function, put it in Vitest. Maestro only for “athlete can open the app and complete the daily loop.”
 
+### Authentication lifecycle coverage
+
+The system browser is an OS-owned boundary, so auth coverage is intentionally split instead of
+pretending the fixture-login Maestro path proves production PKCE.
+
+| Lifecycle step | Automated coverage | Release/manual evidence |
+|----------------|--------------------|-------------------------|
+| Cold launch without tokens | `maestro/smoke-unauth.yaml` | Login screen in phone compatibility mode on iPad |
+| Combined account entry | Maestro asserts the honest Continue CTA plus legal/self-hosted links | Continue opens the hosted page for new or returning accounts |
+| PKCE request + callback | `src/auth/__tests__/oauth.test.ts` checks client, redirect, scopes, verifier, success, quiet cancel/dismiss, OAuth `access_denied`, provider failure, malformed callback, and exchange errors | Apple/Google provider round trip in `ASWebAuthenticationSession` |
+| Token persistence / refresh | `oauth.test.ts`, `tokenStorage.test.ts`, API refresh/race tests | Relaunch after a successful provider sign-in |
+| Session bootstrap | API user-info/refresh tests plus authenticated shell smoke | Cold relaunch of a signed-in TestFlight build |
+| Sign out | `tokenStorage.test.ts`, `sessionTeardown.test.ts`, API generation/race tests, `standalone/flow-auth-logout.yaml` | Sign out → login screen → cold relaunch remains signed out; provider account switch is manual |
+
+For an App Review reproduction, record each boundary separately: hosted reachability, Apple’s
+system consent sheet, hosted OAuth page, provider return, token exchange, user-info, and sign-out.
+The red login-screen fallback alone is not enough evidence. Normal system-browser cancellation is
+silent; genuine failures use a stable stage classification and must be correlated with sanitized
+release diagnostics.
+
 ---
 
 ## Maintaining e2e during development
@@ -81,7 +101,7 @@ Keep this table honest when you add or remove IDs.
 | testID | Where | Used by |
 |--------|-------|---------|
 | `login-screen` | Login root | `smoke-unauth` |
-| `login-sign-in` / `login-create-account` / `login-legal-notice` | Login CTAs / notice | `smoke-unauth` |
+| `login-continue` / `login-legal-notice` | Combined account entry CTA / notice | `smoke-unauth`, `flow-auth-logout` |
 | `today-screen` | Today tab | shell + most auth flows |
 | `today-recommendation` | Recommendation hero | `flow-today-recommendation`, accept flow |
 | `today-recommendation-accept` | Accept CTA (when `canAccept`) | `flow-recommendation-accept` |
@@ -277,6 +297,23 @@ When `EXPO_PUBLIC_E2E_AUTH=1`, bootstrap skips system-browser PKCE and seeds Sec
 | `EXPO_PUBLIC_E2E_ALLOW_ANY_HOST` | `1` to skip host allowlist (staging only) |
 
 **Never** set these on **preview**, **production**, or store EAS profiles (or on GitHub Release APKs from `pnpm release:android:github`). Tokens in `EXPO_PUBLIC_*` are embedded in the JS bundle for that build. Use only the dedicated `e2e` EAS profile / local `.env` when you need the env-seed fallback.
+
+#### Enforced in code, not just by convention (CW-354)
+
+This is no longer a documentation-only rule — two guards back it, both keyed off `EXPO_PUBLIC_SENTRY_ENVIRONMENT`, which `eas.json` sets per profile:
+
+* **Runtime resolver** — `resolveE2eAuthEnabled()` in `src/config/e2eGuard.ts` computes `E2E_AUTH_ENABLED` in `src/config/env.ts`. The flag only takes effect when the build is a dev build (`__DEV__`) **or** `EXPO_PUBLIC_SENTRY_ENVIRONMENT === 'e2e'`. On any other environment it logs a `console.error` and resolves to `false` — deliberately *not* a throw, since that runs at module load and would turn a config mistake into a crash on launch. `E2E_ACCESS_TOKEN` / `E2E_REFRESH_TOKEN` resolve to `''` whenever the resolver says disabled, so fixture tokens never reach `src/auth/e2eAuth.ts`.
+* **Build-time assertion** — `app.config.ts` throws during config resolution when `EXPO_PUBLIC_E2E_AUTH` is truthy while `EXPO_PUBLIC_SENTRY_ENVIRONMENT` resolves to `production`. A mis-set production build fails at `expo prebuild` / `eas build` instead of shipping.
+
+| `EXPO_PUBLIC_E2E_AUTH` | `__DEV__` | `EXPO_PUBLIC_SENTRY_ENVIRONMENT` | E2E auth + tokens | Build |
+|---|---|---|---|---|
+| off | any | any | disabled | ok |
+| on | true | `development` (local Metro / dev client) | **enabled** | ok |
+| on | false | `e2e` (EAS `e2e` profile) | **enabled** | ok |
+| on | false | `preview` | disabled + `console.error` | ok |
+| on | false | `production` | disabled + `console.error` | **throws** |
+
+Both documented local paths are unaffected: `pnpm test:e2e` runs against a dev-client build where `__DEV__` is true, and the EAS `e2e` profile sets `EXPO_PUBLIC_SENTRY_ENVIRONMENT=e2e`.
 
 ### Simulator → instance URL
 

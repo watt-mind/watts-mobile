@@ -11,6 +11,7 @@ import Animated, {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { friendlyError } from '@/src/api/errors';
+import { authErrorMessage, isAuthCancellation } from '@/src/auth/authErrors';
 import { getRedirectUri, isExpoGoRuntime } from '@/src/auth/oauth';
 import { useAuth } from '@/src/auth/AuthContext';
 import { Button } from '@/src/components/Button';
@@ -61,7 +62,9 @@ export default function LoginScreen() {
     try {
       await signIn();
     } catch (err) {
-      setLocalError(friendlyError(err, 'Sign-in failed'));
+      if (!isAuthCancellation(err)) {
+        setLocalError(authErrorMessage(err));
+      }
     } finally {
       setBusy(false);
     }
@@ -147,27 +150,28 @@ export default function LoginScreen() {
 
         {message ? (
           <EnterSection order={2} reduceMotion={reduceMotion}>
-            <Text className="mt-4 text-sm text-danger">{message}</Text>
+            <Text
+              accessibilityRole="alert"
+              accessibilityLiveRegion="polite"
+              className="mt-4 text-sm text-danger"
+            >
+              {message}
+            </Text>
           </EnterSection>
         ) : null}
 
         <EnterSection order={3} reduceMotion={reduceMotion}>
           <Button
-            testID="login-create-account"
+            testID="login-continue"
             className="mt-8"
-            label="Create account"
-            onPress={() => void onSignIn()}
-            loading={busy}
-          />
-          <Button
-            testID="login-sign-in"
-            className="mt-3"
-            variant="secondary"
-            label="Sign in"
+            label={message ? 'Try again' : 'Continue'}
             onPress={() => void onSignIn()}
             loading={busy}
             disabled={busy}
           />
+          <Text className="mt-3 text-center text-sm leading-5 text-text-muted">
+            Continue to sign in or create your account securely in the system browser.
+          </Text>
           <Text
             testID="login-legal-notice"
             className="mt-4 text-center text-xs leading-5 text-text-muted"

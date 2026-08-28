@@ -1,0 +1,28 @@
+# Auth lifecycle: an authenticated fixture session signs out locally and stays signed out on relaunch.
+# Real provider account switching remains release/manual because the system browser is OS-owned.
+appId: com.coachwatts.app
+tags:
+  - auth
+  - isolated
+---
+- runFlow: ../subflows/boot-and-login.yaml
+- runFlow: ../subflows/tap-tab-more.yaml
+- scrollUntilVisible:
+    element:
+      text: "Sign out"
+    direction: DOWN
+    timeout: 15000
+- tapOn: "Sign out"
+- extendedWaitUntil:
+    visible:
+      id: login-screen
+    timeout: 20000
+- assertVisible:
+    id: login-continue
+- launchApp
+- extendedWaitUntil:
+    visible:
+      id: login-screen
+    timeout: 20000
+- assertVisible:
+    id: login-continue

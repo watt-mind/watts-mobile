@@ -1,6 +1,6 @@
 # 007 — TestFlight smoke
 
-**Area:** qa · **Priority:** high · **Status:** done
+**Area:** qa · **Priority:** high · **Status:** in progress (replacement build required)
 
 **Depends on:** [006](./006-ios-production-build.md)
 
@@ -24,6 +24,31 @@ On a physical device or recent simulator with the TestFlight build:
 
 **Run notes (2026-08-09):** Release `expo run:ios --configuration Release` on iPhone 17 Pro sim (device archive IPA is not sim-installable). ASC build **0.1.1 (4)** confirmed **Ready to Submit**. Sign-out → Sign in reused existing IdP browser session (no in-app password). Demo account `coachwatts.play.review@gmail.com`.
 
+## App Review authentication matrix
+
+Run every required row against the **exact uploaded TestFlight candidate**, not a simulator-only Release build. Record device, OS, provider, and result in the distribution log.
+
+| Journey | iPhone | iPad phone compatibility | Required result |
+|---------|--------|--------------------------|-----------------|
+| Clean install → Continue | [ ] | [ ] | System consent → hosted provider page |
+| Cancel iOS auth consent | [ ] | [ ] | Quiet return; no red failure |
+| Cancel hosted login | [ ] | [ ] | OAuth return to app; no red failure |
+| Google seeded review account | [ ] | [ ] | Automatic callback → representative content |
+| Apple new account | [ ] | [ ] | Callback → activation path |
+| Apple returning account | [ ] | [ ] | Same athlete restored |
+| Apple Hide My Email | [ ] | [ ] | Relay identity can return later |
+| Provider callback failure | [ ] | [ ] | Safe retry / alternate provider / return actions |
+| Offline before Continue | [ ] | [ ] | Actionable reachability copy and retry |
+| Network loss after token exchange | [ ] | [ ] | Retry resumes account verification |
+| Sign out → relaunch | [ ] | [ ] | Remains signed out; instance retained |
+| Account A → sign out → account B | [ ] | [ ] | No A data, queue, push, or Health identity appears |
+
+Before marking the matrix complete:
+
+- [ ] Inspect the archived JS bundle and confirm no `EXPO_PUBLIC_E2E_*` login bypass or fixture token is embedded.
+- [ ] Confirm release Sentry receives one sanitized staged test failure with no email, callback URL, OAuth state, code, verifier, access token, or refresh token.
+- [ ] Confirm normal cancellation creates no Sentry error event.
+
 ## Done when
 
-- Failures logged as issues or fixed; no known store-blocker on the binary you will submit.
+- Every matrix row passes on the exact uploaded binary; failures are logged as issues or fixed; no known store-blocker remains.

@@ -58,4 +58,6 @@ yarn-error.*
 # Local harness symlinks from `factory emit` — not repo content
 .claude/commands/factory-*.md
 .cursor/commands/factory-*.md
+.claude/launch.json
 # FACTORY:HARNES:END
+

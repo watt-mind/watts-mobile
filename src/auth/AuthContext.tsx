@@ -19,9 +19,12 @@ import {
 } from '@/src/auth/authSessionGeneration';
 import { applyE2eAuthSeed, applyPendingE2eLogin, isE2eAuthEnabled } from '@/src/auth/e2eAuth';
 import { parseE2eLoginDeepLink } from '@/src/auth/e2eLoginDeepLink';
-import { loginWithPkce } from '@/src/auth/oauth';
+import { AuthFlowError } from '@/src/auth/authErrors';
+import { loginWithPkce, revokeRefreshToken } from '@/src/auth/oauth';
 import { loadPendingE2eLogin, setPendingE2eLogin } from '@/src/auth/pendingE2eLogin';
+import { teardownSessionCaches } from '@/src/auth/sessionTeardown';
 import { clearTokens, loadTokens } from '@/src/auth/tokenStorage';
+import { reportAuthFailure, trackAuthStage } from '@/src/features/auth/analytics';
 import {
   getDefaultInstanceUrl,
   getInstanceUrl,
@@ -85,6 +88,21 @@ type AuthContextValue = {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 const queryClient = createAppQueryClient();
+
+/**
+ * Every identity transition (sign-out, server-revoked refresh token, instance
+ * switch) tears the caches down through the one routine, so the
+ * cancel → memory → disk ordering is defined in a single place. See
+ * `sessionTeardown.ts` for why wiping disk first leaks the previous athlete's
+ * data across a cold launch.
+ */
+function teardownQueryCaches(): Promise<void> {
+  return teardownSessionCaches({
+    cancelQueries: () => queryClient.cancelQueries(),
+    clearMemoryCache: () => queryClient.clear(),
+    clearPersistedCache: () => clearPersistedQueryCache(),
+  });
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>('loading');
@@ -226,8 +244,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAuthFailureHandler(() => {
       setUser(null);
       setStatus((current) => (current === 'needs_instance' ? current : 'needs_login'));
-      queryClient.clear();
-      void clearPersistedQueryCache();
+      // Synchronous callback: fire and forget, but the helper still enforces the
+      // cancel → memory → disk order internally and never rejects.
+      void teardownQueryCaches();
       // A server-revoked refresh token signs the athlete out just as definitively
       // as tapping Sign out: the device must stop receiving that account's push
       // notifications, and the local token must be cleared so the pending
@@ -258,8 +277,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await clearConnectLater();
         await clearTokens();
         setUser(null);
-        queryClient.clear();
-        await clearPersistedQueryCache();
+        await teardownQueryCaches();
       }
       await setInstanceUrl(normalized);
       if (getAuthSessionGeneration() !== generation) {
@@ -281,13 +299,91 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error('Configure an instance URL first');
     }
 
-    await validateInstanceReachability(instance);
+    try {
+      await validateInstanceReachability(instance);
+    } catch (cause) {
+      const authError = new AuthFlowError({
+        code: 'instance_unreachable',
+        stage: 'instance',
+        cause,
+      });
+      reportAuthFailure(authError, instance);
+      throw authError;
+    }
+
+    const pendingTokens = await loadTokens();
+    if (pendingTokens?.accessToken) {
+      const pendingGeneration = getAuthSessionGeneration();
+      try {
+        const pendingInfo = await fetchUserInfo();
+        if (!pendingInfo.sub?.trim()) {
+          throw new AuthFlowError({
+            code: 'account_verification_rejected',
+            stage: 'account_verification',
+          });
+        }
+        if (getAuthSessionGeneration() !== pendingGeneration) return;
+        setUser(pendingInfo);
+        setStatus('authenticated');
+        trackAuthStage('session_resumed', { stage: 'account_verification', instanceUrl: instance });
+        return;
+      } catch (cause) {
+        if (isReachabilityError(cause)) {
+          const authError = new AuthFlowError({
+            code: 'account_verification_unavailable',
+            stage: 'account_verification',
+            cause,
+          });
+          reportAuthFailure(authError, instance);
+          throw authError;
+        }
+        await clearTokens(pendingGeneration);
+      }
+    }
+
     // Invalidate stale 401/refresh handlers before opening the browser, then drop
     // in-flight field reads so they cannot race the new grant.
     const generation = bumpAuthSessionGeneration();
     await queryClient.cancelQueries();
-    await loginWithPkce(instance);
-    const info = await fetchUserInfo();
+    try {
+      trackAuthStage('authorization_started', { stage: 'authorization', instanceUrl: instance });
+      await loginWithPkce(instance, generation);
+    } catch (error) {
+      reportAuthFailure(error, instance);
+      throw error;
+    }
+
+    let info: UserInfo;
+    try {
+      info = await fetchUserInfo();
+      if (!info.sub?.trim()) {
+        throw new AuthFlowError({
+          code: 'account_verification_rejected',
+          stage: 'account_verification',
+        });
+      }
+    } catch (cause) {
+      if (isReachabilityError(cause)) {
+        const authError = new AuthFlowError({
+          code: 'account_verification_unavailable',
+          stage: 'account_verification',
+          cause,
+        });
+        reportAuthFailure(authError, instance);
+        throw authError;
+      }
+      await clearTokens(generation);
+      const authError =
+        cause instanceof AuthFlowError
+          ? cause
+          : new AuthFlowError({
+              code: 'account_verification_rejected',
+              stage: 'account_verification',
+              cause,
+            });
+      reportAuthFailure(authError, instance);
+      throw authError;
+    }
     if (getAuthSessionGeneration() !== generation) {
       // A sign-out (or another sign-in) happened while this OAuth flow was in
       // flight. That newer state transition already won — don't resurrect this
@@ -296,10 +392,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     setUser(info);
     setStatus('authenticated');
+    trackAuthStage('authentication_completed', {
+      stage: 'account_verification',
+      instanceUrl: instance,
+    });
   }, [instanceUrl]);
 
   const signOut = useCallback(async () => {
+    // Snapshot the generation that owns these credentials. Revocation may take
+    // a few seconds; generation-aware deletion must not erase a newer login
+    // that wins while the hosted request is in flight.
+    const endingGeneration = getAuthSessionGeneration();
+    const storedTokens = await loadTokens();
     const generation = bumpAuthSessionGeneration();
+    if (instanceUrl && storedTokens?.refreshToken) {
+      try {
+        await revokeRefreshToken({
+          instanceBaseUrl: instanceUrl,
+          refreshToken: storedTokens.refreshToken,
+        });
+        trackAuthStage('session_revoked', { stage: 'revocation', instanceUrl });
+      } catch (error) {
+        trackAuthStage('session_revocation_failed', {
+          stage: 'revocation',
+          code: error instanceof AuthFlowError ? error.code : 'revocation_failed',
+          instanceUrl,
+        });
+      }
+    }
     await clearPushRegistrationForIdentityTransition();
     await clearHealthSyncForIdentityTransition();
     await clearPendingWellnessCheckinForIdentityTransition();
@@ -309,15 +429,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
       /* best-effort */
     }
-    await clearTokens();
-    await clearPersistedQueryCache();
+    await clearTokens(endingGeneration);
+    // Unconditional, exactly as the persisted-cache wipe was before: the caches
+    // must not survive a sign-out even if a newer transition raced us. The
+    // generation guard below still gates the React state updates.
+    await teardownQueryCaches();
     if (getAuthSessionGeneration() !== generation) {
       // A newer sign-in (or another sign-out) already took effect while this
       // sign-out was still cleaning up — don't clobber it with stale state.
       return;
     }
     setUser(null);
-    queryClient.clear();
     setStatus(instanceUrl ? 'needs_login' : 'needs_instance');
   }, [instanceUrl]);
 

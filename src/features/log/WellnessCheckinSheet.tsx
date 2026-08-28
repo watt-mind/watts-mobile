@@ -166,13 +166,20 @@ export function WellnessCheckinSheet({
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <Pressable accessible={false} className="flex-1 justify-end bg-black/60" onPress={onClose}>
+      {/* Backdrop is a sibling, not a parent: a Pressable ancestor of the ScrollView
+          swallows drags that start on card content on Android (CW-620). */}
+      <View className="flex-1 justify-end bg-black/60">
         <Pressable
-          testID="wellness-checkin-sheet"
           accessible={false}
+          className="flex-1"
+          onPress={onClose}
+          accessibilityRole="button"
+          accessibilityLabel="Dismiss"
+        />
+        <View
+          testID="wellness-checkin-sheet"
           className="rounded-t-3xl bg-surface px-6 pb-10 pt-4"
-          style={{ maxHeight: '90%' }}
-          onPress={(e) => e.stopPropagation()}
+          style={{ maxHeight: '85%' }}
         >
           <View className="mb-4 h-1 w-10 self-center rounded-full bg-border-strong" />
 
@@ -262,8 +269,8 @@ export function WellnessCheckinSheet({
             loading={saveMutation.isPending}
             disabled={!formHasContent(values) || saveNotice != null}
           />
-        </Pressable>
-      </Pressable>
+        </View>
+      </View>
     </Modal>
   );
 }

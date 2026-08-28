@@ -46,9 +46,28 @@ function isTimeoutError(err: unknown): boolean {
 }
 
 /**
+ * True when an error's `message` is already end-user copy, flagged by the
+ * thrower via `userFacing: true` (see `InstanceTransportError` in
+ * `src/config/instanceTransport.ts`). Without this, an actionable refusal —
+ * "this server must use https://" — would be replaced by a caller's generic
+ * fallback and the user would never learn what to fix.
+ */
+function isUserFacingError(err: unknown): boolean {
+  return (
+    err instanceof Error &&
+    (err as { userFacing?: unknown }).userFacing === true &&
+    err.message.trim() !== ''
+  );
+}
+
+/**
  * Map a thrown error to human copy for UI. Keeps raw errors intact for Sentry.
  */
 export function friendlyError(err: unknown, fallback: string): string {
+  if (isUserFacingError(err)) {
+    return (err as Error).message;
+  }
+
   const status = httpStatus(err);
   if (status !== undefined) {
     if (status === 401 || status === 403) {
