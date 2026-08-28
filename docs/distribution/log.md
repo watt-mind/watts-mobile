@@ -14,6 +14,15 @@ Format:
 
 ---
 
+## 2026-08-28 — Replacement TestFlight build 0.1.1 (6) uploaded (CW-728)
+
+- Cut from the released mobile auth-remediation source (`master` at `2ec8273`, merge of #192), then bumped `expo.ios.buildNumber` **5 → 6**.
+- Store-safety verification passed before prebuild: **1,438 Vitest tests**, TypeScript, ESLint (0 errors; 11 existing warnings), Maestro flow validation, Expo config validation, and diff checks. The release environment contains no `EXPO_PUBLIC_E2E_*` keys.
+- `npx expo prebuild -p ios --clean` → signed Xcode archive → `xcodebuild -exportArchive` with `destination=upload`; App Store Connect reported **Upload succeeded**.
+- Artifact: `dist/ios/CoachWatts-0.1.1-6.xcarchive`; logs: `dist/ios/archive-0.1.1-6.log` and `dist/ios/export-upload-0.1.1-6.log`.
+- App Store Connect processing completed: **0.1.1 (6)** is **Ready to Submit**, expires in 90 days, and was attached automatically to internal group **WM**. Prebuilt ExpoCameraBarcodeScanning, React, ReactNativeDependencies, and Hermes dSYM warnings were non-blocking.
+- Next gate: execute every iPhone + iPad authentication row in [007](./tasks/007-testflight-smoke.md) before resubmitting to App Review. External group **ALPHA** has not been added to build 6.
+
 ## 2026-08-28 — App Review auth remediation started (CW-724–CW-727)
 
 - Captured the remediation as four Linear issues: typed cancellation-safe mobile entry (CW-724), OAuth-compliant hosted cancellation/provider recovery (CW-725), hosted token revocation/account isolation (CW-726), and a deterministic reviewer/release gate (CW-727).
