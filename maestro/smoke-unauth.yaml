@@ -15,4 +15,10 @@ tags:
     timeout: 90000
 - assertVisible:
     id: login-sign-in
+- assertVisible:
+    id: login-create-account
+- assertVisible:
+    id: login-legal-notice
 - assertVisible: "Sign in"
+- assertVisible: "Create account"
+- assertVisible: "Use self-hosted instance"
