@@ -72,4 +72,3 @@ The unauthenticated auth screen SHALL present one honest continue entry point ex
 #### Scenario: Returning account continues through PKCE
 - **WHEN** a returning athlete chooses Continue and completes an offered provider
 - **THEN** the app completes PKCE and applies the activation gate after verified success
-

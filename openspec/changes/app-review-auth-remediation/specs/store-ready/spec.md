@@ -32,4 +32,3 @@ Release authentication SHALL emit stage-level diagnostics sufficient to locate f
 #### Scenario: User cancellation
 - **WHEN** authentication is cancelled normally
 - **THEN** the cancellation is not captured as an error event
-

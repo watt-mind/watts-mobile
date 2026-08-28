@@ -25,4 +25,3 @@ Each App Store submission SHALL verify Sign in with Apple against the production
 #### Scenario: Hide My Email review smoke
 - **WHEN** the Apple identity chooses Hide My Email
 - **THEN** the private relay identity completes account creation and can return to the same account later
-

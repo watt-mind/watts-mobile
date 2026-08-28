@@ -37,18 +37,18 @@
 
 ### Apple App Store review (deterministic Google demo)
 
-1. Reviewer taps Continue in the app  
-2. System browser opens Coach Watts `/oauth/login`  
-3. They choose **Sign in with Google** and use the supplied ASC credentials  
+1. Reviewer taps Continue in the app
+2. System browser opens Coach Watts `/oauth/login`
+3. They choose **Sign in with Google** and use the supplied ASC credentials
 4. Browser returns via `coachwatts://oauth/callback` (PKCE)
 
 Sign in with Apple remains available on the same hosted page and is tested separately for new, returning, and Hide My Email identities.
 
 ### TestFlight beta / Play / Google demo
 
-1. Tester taps Continue in the app  
-2. System browser opens Coach Watts `/oauth/login`  
-3. They choose **Google** and use `coachwatts.play.review@gmail.com`  
+1. Tester taps Continue in the app
+2. System browser opens Coach Watts `/oauth/login`
+3. They choose **Google** and use `coachwatts.play.review@gmail.com`
 4. Browser returns via `coachwatts://oauth/callback` (PKCE)
 
 ## Steps

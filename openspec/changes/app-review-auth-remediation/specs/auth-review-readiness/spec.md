@@ -20,4 +20,3 @@ Distribution records SHALL identify the version, build, tested device classes, p
 #### Scenario: Release candidate is ready to submit
 - **WHEN** all authentication checks pass on the exact uploaded binary
 - **THEN** the distribution log records the evidence and the review task links to it
-
