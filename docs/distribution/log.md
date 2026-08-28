@@ -14,6 +14,13 @@ Format:
 
 ---
 
+## 2026-08-28 — App Review auth remediation started (CW-724–CW-727)
+
+- Captured the remediation as four Linear issues: typed cancellation-safe mobile entry (CW-724), OAuth-compliant hosted cancellation/provider recovery (CW-725), hosted token revocation/account isolation (CW-726), and a deterministic reviewer/release gate (CW-727).
+- Resubmission is now gated on a replacement TestFlight binary passing the documented iPhone + iPad authentication matrix and on ASC Distribution containing the active seeded Google demo credentials.
+- Sign in with Apple remains an equally available Guideline 4.8 option and must pass new, returning, and Hide My Email smokes; it is no longer the only instructed reviewer path.
+- No replacement build has been uploaded or submitted yet.
+
 ## 2026-08-28 — App Review rejected 0.1.1 (5): sign-in reproduction (CW-723)
 
 - Submission `863ef39c-ac41-41f9-92ed-cb9733062ce4` was rejected after review on 2026-08-26 using an iPad Air 11-inch (M3); Apple supplied a screenshot of the login screen showing `Sign-in failed`.
