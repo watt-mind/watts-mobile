@@ -20,7 +20,7 @@ import {
 import { applyE2eAuthSeed, applyPendingE2eLogin, isE2eAuthEnabled } from '@/src/auth/e2eAuth';
 import { parseE2eLoginDeepLink } from '@/src/auth/e2eLoginDeepLink';
 import { AuthFlowError } from '@/src/auth/authErrors';
-import { loginWithPkce } from '@/src/auth/oauth';
+import { loginWithPkce, revokeRefreshToken } from '@/src/auth/oauth';
 import { loadPendingE2eLogin, setPendingE2eLogin } from '@/src/auth/pendingE2eLogin';
 import { teardownSessionCaches } from '@/src/auth/sessionTeardown';
 import { clearTokens, loadTokens } from '@/src/auth/tokenStorage';
@@ -399,7 +399,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [instanceUrl]);
 
   const signOut = useCallback(async () => {
+    // Snapshot the generation that owns these credentials. Revocation may take
+    // a few seconds; generation-aware deletion must not erase a newer login
+    // that wins while the hosted request is in flight.
+    const endingGeneration = getAuthSessionGeneration();
+    const storedTokens = await loadTokens();
     const generation = bumpAuthSessionGeneration();
+    if (instanceUrl && storedTokens?.refreshToken) {
+      try {
+        await revokeRefreshToken({
+          instanceBaseUrl: instanceUrl,
+          refreshToken: storedTokens.refreshToken,
+        });
+        trackAuthStage('session_revoked', { stage: 'revocation', instanceUrl });
+      } catch (error) {
+        trackAuthStage('session_revocation_failed', {
+          stage: 'revocation',
+          code: error instanceof AuthFlowError ? error.code : 'revocation_failed',
+          instanceUrl,
+        });
+      }
+    }
     await clearPushRegistrationForIdentityTransition();
     await clearHealthSyncForIdentityTransition();
     await clearPendingWellnessCheckinForIdentityTransition();
@@ -409,7 +429,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
       /* best-effort */
     }
-    await clearTokens();
+    await clearTokens(endingGeneration);
     // Unconditional, exactly as the persisted-cache wipe was before: the caches
     // must not survive a sign-out even if a newer transition raced us. The
     // generation guard below still gates the React state updates.

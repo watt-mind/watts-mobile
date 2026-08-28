@@ -205,6 +205,41 @@ export async function exchangeAuthorizationCode(params: {
   return body;
 }
 
+export async function revokeRefreshToken(params: {
+  instanceBaseUrl: string;
+  refreshToken: string;
+  timeoutMs?: number;
+}): Promise<void> {
+  const timeoutMs = params.timeoutMs ?? 3_000;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  let response: Response;
+  try {
+    const body = new URLSearchParams({
+      token: params.refreshToken,
+      token_type_hint: 'refresh_token',
+      client_id: assertOAuthClientConfigured(),
+    });
+    response = await fetch(`${params.instanceBaseUrl}/api/oauth/revoke`, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: body.toString(),
+      signal: controller.signal,
+    });
+  } catch (cause) {
+    throw new AuthFlowError({ code: 'revocation_failed', stage: 'revocation', cause });
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  if (!response.ok) {
+    throw new AuthFlowError({ code: 'revocation_failed', stage: 'revocation' });
+  }
+}
+
 export async function refreshAccessToken(params: {
   instanceBaseUrl: string;
   refreshToken: string;

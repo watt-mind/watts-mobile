@@ -6,6 +6,7 @@ import {
   getRedirectUri,
   loginWithPkce,
   refreshAccessToken,
+  revokeRefreshToken,
 } from '../oauth';
 import { COMPANION_SCOPES } from '../scopes';
 
@@ -300,6 +301,72 @@ describe('exchangeAuthorizationCode', () => {
         codeVerifier: 'mock-verifier',
       }),
     ).rejects.toMatchObject({ code: 'invalid_token_response', stage: 'token_exchange' });
+  });
+});
+
+describe('revokeRefreshToken', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('revokes the refresh token for the public client', async () => {
+    global.fetch = vi.fn(async () => response({ success: true })) as unknown as typeof fetch;
+
+    await revokeRefreshToken({
+      instanceBaseUrl: 'https://coachwatts.com',
+      refreshToken: 'refresh-to-revoke',
+    });
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      'https://coachwatts.com/api/oauth/revoke',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          'Content-Type': 'application/x-www-form-urlencoded',
+        }),
+        body: 'token=refresh-to-revoke&token_type_hint=refresh_token&client_id=mock-client-id',
+      }),
+    );
+  });
+
+  it('classifies network and server failures without exposing the token', async () => {
+    global.fetch = vi.fn(async () => {
+      throw new TypeError('network failed for refresh-to-revoke');
+    }) as unknown as typeof fetch;
+
+    const error = await revokeRefreshToken({
+      instanceBaseUrl: 'https://coachwatts.com',
+      refreshToken: 'refresh-to-revoke',
+    }).catch((caught) => caught);
+
+    expect(error).toMatchObject({ code: 'revocation_failed', stage: 'revocation' });
+    expect(authErrorMessage(error)).not.toContain('refresh-to-revoke');
+  });
+
+  it('aborts a stalled revocation at the configured deadline', async () => {
+    vi.useFakeTimers();
+    try {
+      global.fetch = vi.fn(
+        async (_url, init) =>
+          await new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener('abort', () => {
+              reject(new DOMException('Aborted', 'AbortError'));
+            });
+          }),
+      ) as unknown as typeof fetch;
+
+      const result = revokeRefreshToken({
+        instanceBaseUrl: 'https://coachwatts.com',
+        refreshToken: 'refresh-to-revoke',
+        timeoutMs: 50,
+      }).catch((caught) => caught);
+
+      await vi.advanceTimersByTimeAsync(50);
+      await expect(result).resolves.toMatchObject({
+        code: 'revocation_failed',
+        stage: 'revocation',
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

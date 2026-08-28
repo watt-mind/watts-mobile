@@ -31,7 +31,7 @@ pretending the fixture-login Maestro path proves production PKCE.
 | PKCE request + callback | `src/auth/__tests__/oauth.test.ts` checks client, redirect, scopes, verifier, success, quiet cancel/dismiss, OAuth `access_denied`, provider failure, malformed callback, and exchange errors | Apple/Google provider round trip in `ASWebAuthenticationSession` |
 | Token persistence / refresh | `oauth.test.ts`, `tokenStorage.test.ts`, API refresh/race tests | Relaunch after a successful provider sign-in |
 | Session bootstrap | API user-info/refresh tests plus authenticated shell smoke | Cold relaunch of a signed-in TestFlight build |
-| Sign out | `tokenStorage.test.ts`, `sessionTeardown.test.ts`, API generation/race tests | Sign out → login screen → cold relaunch remains signed out; provider account switch is manual |
+| Sign out | `tokenStorage.test.ts`, `sessionTeardown.test.ts`, API generation/race tests, `standalone/flow-auth-logout.yaml` | Sign out → login screen → cold relaunch remains signed out; provider account switch is manual |
 
 For an App Review reproduction, record each boundary separately: hosted reachability, Apple’s
 system consent sheet, hosted OAuth page, provider return, token exchange, user-info, and sign-out.
@@ -101,7 +101,7 @@ Keep this table honest when you add or remove IDs.
 | testID | Where | Used by |
 |--------|-------|---------|
 | `login-screen` | Login root | `smoke-unauth` |
-| `login-continue` / `login-legal-notice` | Combined account entry CTA / notice | `smoke-unauth` |
+| `login-continue` / `login-legal-notice` | Combined account entry CTA / notice | `smoke-unauth`, `flow-auth-logout` |
 | `today-screen` | Today tab | shell + most auth flows |
 | `today-recommendation` | Recommendation hero | `flow-today-recommendation`, accept flow |
 | `today-recommendation-accept` | Accept CTA (when `canAccept`) | `flow-recommendation-accept` |
