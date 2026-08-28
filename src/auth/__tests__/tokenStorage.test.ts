@@ -7,11 +7,16 @@ import {
 import { clearTokens, loadTokens, saveTokens } from '../tokenStorage';
 
 const store = new Map<string, string>();
+let bumpDuringAccessWrite = false;
 
 vi.mock('@/src/storage/secureStorage', () => ({
   getItemAsync: vi.fn(async (key: string) => store.get(key) ?? null),
   setItemAsync: vi.fn(async (key: string, value: string) => {
     store.set(key, value);
+    if (key === 'cw.accessToken' && bumpDuringAccessWrite) {
+      bumpDuringAccessWrite = false;
+      bumpAuthSessionGeneration();
+    }
   }),
   deleteItemAsync: vi.fn(async (key: string) => {
     store.delete(key);
@@ -21,6 +26,7 @@ vi.mock('@/src/storage/secureStorage', () => ({
 describe('saveTokens', () => {
   beforeEach(() => {
     store.clear();
+    bumpDuringAccessWrite = false;
     resetAuthSessionGenerationForTests();
   });
 
@@ -65,5 +71,17 @@ describe('saveTokens', () => {
     const loaded = await loadTokens();
     expect(loaded?.accessToken).toBe('new');
     expect(loaded?.refreshToken).toBe('r-new');
+  });
+
+  it('removes a partial token save when the auth generation changes during persistence', async () => {
+    bumpDuringAccessWrite = true;
+
+    await expect(
+      saveTokens({ accessToken: 'stale', refreshToken: 'r-stale', expiresIn: 60 }, 0),
+    ).rejects.toThrow('Auth session changed during token save');
+
+    expect(await loadTokens()).toBeNull();
+    expect(store.has('cw.refreshToken')).toBe(false);
+    expect(store.has('cw.authSessionGeneration')).toBe(false);
   });
 });

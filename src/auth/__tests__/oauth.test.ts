@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { friendlyError } from '@/src/api/errors';
+import { authErrorMessage, isAuthCancellation } from '../authErrors';
 import {
   exchangeAuthorizationCode,
   getRedirectUri,
   loginWithPkce,
   refreshAccessToken,
+  revokeRefreshToken,
 } from '../oauth';
 import { COMPANION_SCOPES } from '../scopes';
 
@@ -156,11 +157,14 @@ describe('loginWithPkce', () => {
         code_verifier: 'mock-verifier',
       }),
     });
-    expect(tokenStorage.saveTokens).toHaveBeenCalledWith({
-      accessToken: 'mock-access-token',
-      refreshToken: 'mock-refresh-token',
-      expiresIn: 3600,
-    });
+    expect(tokenStorage.saveTokens).toHaveBeenCalledWith(
+      {
+        accessToken: 'mock-access-token',
+        refreshToken: 'mock-refresh-token',
+        expiresIn: 3600,
+      },
+      7,
+    );
     expect(result).toEqual({
       accessToken: 'mock-access-token',
       refreshToken: 'mock-refresh-token',
@@ -171,19 +175,20 @@ describe('loginWithPkce', () => {
   it.each(['cancel', 'dismiss'])('classifies an auth-session %s as cancellation', async (type) => {
     authSession.result = { type, params: {} };
 
-    await expect(loginWithPkce('https://coachwatts.com')).rejects.toThrow('Sign-in was cancelled');
+    const error = await loginWithPkce('https://coachwatts.com').catch((caught) => caught);
+
+    expect(isAuthCancellation(error)).toBe(true);
+    expect(error).toMatchObject({ code: 'cancelled', stage: 'authorization' });
     expect(global.fetch).not.toHaveBeenCalled();
     expect(tokenStorage.saveTokens).not.toHaveBeenCalled();
   });
 
-  it('reproduces the reviewer screenshot when the system auth session is cancelled', async () => {
+  it('does not reproduce the reviewer error when the system auth session is cancelled', async () => {
     authSession.result = { type: 'cancel', params: {} };
 
-    const message = await loginWithPkce('https://coachwatts.com').catch((error: unknown) =>
-      friendlyError(error, 'Sign-in failed'),
-    );
+    const message = await loginWithPkce('https://coachwatts.com').catch(authErrorMessage);
 
-    expect(message).toBe('Sign-in failed');
+    expect(message).toBe('');
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
@@ -192,9 +197,10 @@ describe('loginWithPkce', () => {
     async (type) => {
       authSession.result = { type, params: {} };
 
-      await expect(loginWithPkce('https://coachwatts.com')).rejects.toThrow(
-        'Sign-in failed — no authorization code returned',
-      );
+      await expect(loginWithPkce('https://coachwatts.com')).rejects.toMatchObject({
+        code: 'authorization_failed',
+        stage: 'authorization',
+      });
       expect(global.fetch).not.toHaveBeenCalled();
     },
   );
@@ -202,18 +208,20 @@ describe('loginWithPkce', () => {
   it('rejects a success callback without an authorization code', async () => {
     authSession.result = { type: 'success', params: {} };
 
-    await expect(loginWithPkce('https://coachwatts.com')).rejects.toThrow(
-      'Sign-in failed — no authorization code returned',
-    );
+    await expect(loginWithPkce('https://coachwatts.com')).rejects.toMatchObject({
+      code: 'invalid_callback',
+      stage: 'callback',
+    });
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
   it('rejects a callback when the PKCE verifier is unavailable', async () => {
     authSession.codeVerifier = undefined;
 
-    await expect(loginWithPkce('https://coachwatts.com')).rejects.toThrow(
-      'Missing PKCE code_verifier',
-    );
+    await expect(loginWithPkce('https://coachwatts.com')).rejects.toMatchObject({
+      code: 'configuration_error',
+      stage: 'configuration',
+    });
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
@@ -222,10 +230,36 @@ describe('loginWithPkce', () => {
       response(successfulToken({ refresh_token: undefined })),
     ) as unknown as typeof fetch;
 
-    await expect(loginWithPkce('https://coachwatts.com')).rejects.toThrow(
-      'Sign-in succeeded but no refresh token was issued — check offline_access scope',
-    );
+    await expect(loginWithPkce('https://coachwatts.com')).rejects.toMatchObject({
+      code: 'invalid_token_response',
+      stage: 'token_exchange',
+    });
     expect(tokenStorage.saveTokens).not.toHaveBeenCalled();
+  });
+
+  it('treats an OAuth access_denied callback as cancellation', async () => {
+    authSession.result = {
+      type: 'success',
+      params: { error: 'access_denied', error_description: 'The user denied the request' },
+    };
+
+    const error = await loginWithPkce('https://coachwatts.com').catch((caught) => caught);
+
+    expect(isAuthCancellation(error)).toBe(true);
+    expect(error).toMatchObject({ code: 'cancelled', stage: 'callback' });
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it('classifies a provider callback error without exposing its description', async () => {
+    authSession.result = {
+      type: 'success',
+      params: { error: 'server_error', error_description: 'private provider detail' },
+    };
+
+    const error = await loginWithPkce('https://coachwatts.com').catch((caught) => caught);
+
+    expect(error).toMatchObject({ code: 'provider_failed', stage: 'callback' });
+    expect(authErrorMessage(error)).not.toContain('private provider detail');
   });
 });
 
@@ -248,7 +282,11 @@ describe('exchangeAuthorizationCode', () => {
         redirectUri: 'coachwatts://oauth/callback',
         codeVerifier: 'mock-verifier',
       }),
-    ).rejects.toThrow('Authorization code expired');
+    ).rejects.toMatchObject({
+      code: 'token_exchange_failed',
+      stage: 'token_exchange',
+      cause: 'Authorization code expired',
+    });
   });
 
   it('rejects a nominally successful response without an access token', async () => {
@@ -262,7 +300,73 @@ describe('exchangeAuthorizationCode', () => {
         redirectUri: 'coachwatts://oauth/callback',
         codeVerifier: 'mock-verifier',
       }),
-    ).rejects.toThrow('Token exchange failed');
+    ).rejects.toMatchObject({ code: 'invalid_token_response', stage: 'token_exchange' });
+  });
+});
+
+describe('revokeRefreshToken', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('revokes the refresh token for the public client', async () => {
+    global.fetch = vi.fn(async () => response({ success: true })) as unknown as typeof fetch;
+
+    await revokeRefreshToken({
+      instanceBaseUrl: 'https://coachwatts.com',
+      refreshToken: 'refresh-to-revoke',
+    });
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      'https://coachwatts.com/api/oauth/revoke',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          'Content-Type': 'application/x-www-form-urlencoded',
+        }),
+        body: 'token=refresh-to-revoke&token_type_hint=refresh_token&client_id=mock-client-id',
+      }),
+    );
+  });
+
+  it('classifies network and server failures without exposing the token', async () => {
+    global.fetch = vi.fn(async () => {
+      throw new TypeError('network failed for refresh-to-revoke');
+    }) as unknown as typeof fetch;
+
+    const error = await revokeRefreshToken({
+      instanceBaseUrl: 'https://coachwatts.com',
+      refreshToken: 'refresh-to-revoke',
+    }).catch((caught) => caught);
+
+    expect(error).toMatchObject({ code: 'revocation_failed', stage: 'revocation' });
+    expect(authErrorMessage(error)).not.toContain('refresh-to-revoke');
+  });
+
+  it('aborts a stalled revocation at the configured deadline', async () => {
+    vi.useFakeTimers();
+    try {
+      global.fetch = vi.fn(
+        async (_url, init) =>
+          await new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener('abort', () => {
+              reject(new DOMException('Aborted', 'AbortError'));
+            });
+          }),
+      ) as unknown as typeof fetch;
+
+      const result = revokeRefreshToken({
+        instanceBaseUrl: 'https://coachwatts.com',
+        refreshToken: 'refresh-to-revoke',
+        timeoutMs: 50,
+      }).catch((caught) => caught);
+
+      await vi.advanceTimersByTimeAsync(50);
+      await expect(result).resolves.toMatchObject({
+        code: 'revocation_failed',
+        stage: 'revocation',
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
