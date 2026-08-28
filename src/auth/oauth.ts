@@ -4,6 +4,7 @@ import Constants from 'expo-constants';
 import * as WebBrowser from 'expo-web-browser';
 
 import { APP_SCHEME, OAUTH_CLIENT_ID } from '@/src/config/env';
+import { AuthFlowError } from '@/src/auth/authErrors';
 import { getAuthSessionGeneration } from '@/src/auth/authSessionGeneration';
 import { COMPANION_SCOPES } from '@/src/auth/scopes';
 import { saveTokens, type StoredTokens } from '@/src/auth/tokenStorage';
@@ -39,14 +40,15 @@ export function getRedirectUri(): string {
 
 export function assertOAuthClientConfigured(): string {
   if (!OAUTH_CLIENT_ID) {
-    throw new Error(
-      'Missing EXPO_PUBLIC_OAUTH_CLIENT_ID. Register an OAuth app in Coach Watts and set the client id in .env',
-    );
+    throw new AuthFlowError({ code: 'configuration_error', stage: 'configuration' });
   }
   return OAUTH_CLIENT_ID;
 }
 
-export async function loginWithPkce(instanceBaseUrl: string): Promise<StoredTokens> {
+export async function loginWithPkce(
+  instanceBaseUrl: string,
+  expectedGeneration = getAuthSessionGeneration(),
+): Promise<StoredTokens> {
   // Callers bump the auth session generation before invoking this (see
   // AuthContext.signIn) so in-flight 401/refresh handlers from a prior session
   // can't clear the brand-new tokens — and so the post-flow generation check
@@ -63,9 +65,13 @@ export async function loginWithPkce(instanceBaseUrl: string): Promise<StoredToke
     prompt: AuthSession.Prompt.Login,
   });
 
-  await request.makeAuthUrlAsync({
-    authorizationEndpoint: `${instanceBaseUrl}/api/oauth/authorize`,
-  });
+  try {
+    await request.makeAuthUrlAsync({
+      authorizationEndpoint: `${instanceBaseUrl}/api/oauth/authorize`,
+    });
+  } catch (cause) {
+    throw new AuthFlowError({ code: 'authorization_failed', stage: 'authorization', cause });
+  }
 
   // Keep cookies so the user can complete Coach Watts (Google) login inside the auth session.
   //
@@ -73,29 +79,49 @@ export async function loginWithPkce(instanceBaseUrl: string): Promise<StoredToke
   // equivalent, so expo-web-browser falls back to Chrome Custom Tabs and honors
   // toolbarColor/showTitle. iOS's ASWebAuthenticationSession chrome is deliberately
   // non-themeable by Apple (anti-spoofing) — these options are silently ignored there.
-  const result = await request.promptAsync(
-    {
-      authorizationEndpoint: `${instanceBaseUrl}/api/oauth/authorize`,
-    },
-    {
-      preferEphemeralSession: false,
-      showInRecents: true,
-      toolbarColor: Colors.background,
-      secondaryToolbarColor: Colors.background,
-      showTitle: false,
-      enableDefaultShareMenuItem: false,
-    },
-  );
+  let result: AuthSession.AuthSessionResult;
+  try {
+    result = await request.promptAsync(
+      {
+        authorizationEndpoint: `${instanceBaseUrl}/api/oauth/authorize`,
+      },
+      {
+        preferEphemeralSession: false,
+        showInRecents: true,
+        toolbarColor: Colors.background,
+        secondaryToolbarColor: Colors.background,
+        showTitle: false,
+        enableDefaultShareMenuItem: false,
+      },
+    );
+  } catch (cause) {
+    throw new AuthFlowError({ code: 'authorization_failed', stage: 'authorization', cause });
+  }
 
-  if (result.type !== 'success' || !result.params.code) {
-    if (result.type === 'dismiss' || result.type === 'cancel') {
-      throw new Error('Sign-in was cancelled');
+  if (result.type === 'dismiss' || result.type === 'cancel') {
+    throw new AuthFlowError({ code: 'cancelled', stage: 'authorization' });
+  }
+
+  if (result.type === 'success' && result.params.error) {
+    if (result.params.error === 'access_denied') {
+      throw new AuthFlowError({ code: 'cancelled', stage: 'callback' });
     }
-    throw new Error('Sign-in failed — no authorization code returned');
+    throw new AuthFlowError({
+      code: 'provider_failed',
+      stage: 'callback',
+    });
+  }
+
+  if (result.type !== 'success') {
+    throw new AuthFlowError({ code: 'authorization_failed', stage: 'authorization' });
+  }
+
+  if (!result.params.code) {
+    throw new AuthFlowError({ code: 'invalid_callback', stage: 'callback' });
   }
 
   if (!request.codeVerifier) {
-    throw new Error('Missing PKCE code_verifier');
+    throw new AuthFlowError({ code: 'configuration_error', stage: 'configuration' });
   }
 
   const token = await exchangeAuthorizationCode({
@@ -107,16 +133,28 @@ export async function loginWithPkce(instanceBaseUrl: string): Promise<StoredToke
   });
 
   if (!token.refresh_token) {
-    throw new Error(
-      'Sign-in succeeded but no refresh token was issued — check offline_access scope',
-    );
+    throw new AuthFlowError({ code: 'invalid_token_response', stage: 'token_exchange' });
   }
 
-  return saveTokens({
-    accessToken: token.access_token,
-    refreshToken: token.refresh_token,
-    expiresIn: token.expires_in ?? 3600,
-  });
+  if (expectedGeneration !== getAuthSessionGeneration()) {
+    throw new AuthFlowError({ code: 'cancelled', stage: 'account_verification' });
+  }
+
+  try {
+    return await saveTokens(
+      {
+        accessToken: token.access_token,
+        refreshToken: token.refresh_token,
+        expiresIn: token.expires_in ?? 3600,
+      },
+      expectedGeneration,
+    );
+  } catch (cause) {
+    if (expectedGeneration !== getAuthSessionGeneration()) {
+      throw new AuthFlowError({ code: 'cancelled', stage: 'account_verification', cause });
+    }
+    throw cause;
+  }
 }
 
 export async function exchangeAuthorizationCode(params: {
@@ -126,28 +164,42 @@ export async function exchangeAuthorizationCode(params: {
   redirectUri: string;
   codeVerifier: string;
 }): Promise<TokenResponse> {
-  const response = await fetch(`${params.instanceBaseUrl}/api/oauth/token`, {
-    method: 'POST',
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      grant_type: 'authorization_code',
-      client_id: params.clientId,
-      code: params.code,
-      redirect_uri: params.redirectUri,
-      code_verifier: params.codeVerifier,
-    }),
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${params.instanceBaseUrl}/api/oauth/token`, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        grant_type: 'authorization_code',
+        client_id: params.clientId,
+        code: params.code,
+        redirect_uri: params.redirectUri,
+        code_verifier: params.codeVerifier,
+      }),
+    });
+  } catch (cause) {
+    throw new AuthFlowError({ code: 'token_exchange_failed', stage: 'token_exchange', cause });
+  }
 
-  const body = (await response.json()) as TokenResponse & {
-    error?: string;
-    error_description?: string;
-  };
+  let body: (TokenResponse & { error?: string; error_description?: string }) | undefined;
+  try {
+    body = (await response.json()) as TokenResponse & {
+      error?: string;
+      error_description?: string;
+    };
+  } catch (cause) {
+    throw new AuthFlowError({ code: 'token_exchange_failed', stage: 'token_exchange', cause });
+  }
 
   if (!response.ok || !body.access_token) {
-    throw new Error(body.error_description || body.error || 'Token exchange failed');
+    throw new AuthFlowError({
+      code: response.ok ? 'invalid_token_response' : 'token_exchange_failed',
+      stage: 'token_exchange',
+      cause: body.error_description || body.error,
+    });
   }
 
   return body;

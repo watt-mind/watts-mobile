@@ -19,10 +19,12 @@ import {
 } from '@/src/auth/authSessionGeneration';
 import { applyE2eAuthSeed, applyPendingE2eLogin, isE2eAuthEnabled } from '@/src/auth/e2eAuth';
 import { parseE2eLoginDeepLink } from '@/src/auth/e2eLoginDeepLink';
+import { AuthFlowError } from '@/src/auth/authErrors';
 import { loginWithPkce } from '@/src/auth/oauth';
 import { loadPendingE2eLogin, setPendingE2eLogin } from '@/src/auth/pendingE2eLogin';
 import { teardownSessionCaches } from '@/src/auth/sessionTeardown';
 import { clearTokens, loadTokens } from '@/src/auth/tokenStorage';
+import { reportAuthFailure, trackAuthStage } from '@/src/features/auth/analytics';
 import {
   getDefaultInstanceUrl,
   getInstanceUrl,
@@ -297,13 +299,91 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error('Configure an instance URL first');
     }
 
-    await validateInstanceReachability(instance);
+    try {
+      await validateInstanceReachability(instance);
+    } catch (cause) {
+      const authError = new AuthFlowError({
+        code: 'instance_unreachable',
+        stage: 'instance',
+        cause,
+      });
+      reportAuthFailure(authError, instance);
+      throw authError;
+    }
+
+    const pendingTokens = await loadTokens();
+    if (pendingTokens?.accessToken) {
+      const pendingGeneration = getAuthSessionGeneration();
+      try {
+        const pendingInfo = await fetchUserInfo();
+        if (!pendingInfo.sub?.trim()) {
+          throw new AuthFlowError({
+            code: 'account_verification_rejected',
+            stage: 'account_verification',
+          });
+        }
+        if (getAuthSessionGeneration() !== pendingGeneration) return;
+        setUser(pendingInfo);
+        setStatus('authenticated');
+        trackAuthStage('session_resumed', { stage: 'account_verification', instanceUrl: instance });
+        return;
+      } catch (cause) {
+        if (isReachabilityError(cause)) {
+          const authError = new AuthFlowError({
+            code: 'account_verification_unavailable',
+            stage: 'account_verification',
+            cause,
+          });
+          reportAuthFailure(authError, instance);
+          throw authError;
+        }
+        await clearTokens(pendingGeneration);
+      }
+    }
+
     // Invalidate stale 401/refresh handlers before opening the browser, then drop
     // in-flight field reads so they cannot race the new grant.
     const generation = bumpAuthSessionGeneration();
     await queryClient.cancelQueries();
-    await loginWithPkce(instance);
-    const info = await fetchUserInfo();
+    try {
+      trackAuthStage('authorization_started', { stage: 'authorization', instanceUrl: instance });
+      await loginWithPkce(instance, generation);
+    } catch (error) {
+      reportAuthFailure(error, instance);
+      throw error;
+    }
+
+    let info: UserInfo;
+    try {
+      info = await fetchUserInfo();
+      if (!info.sub?.trim()) {
+        throw new AuthFlowError({
+          code: 'account_verification_rejected',
+          stage: 'account_verification',
+        });
+      }
+    } catch (cause) {
+      if (isReachabilityError(cause)) {
+        const authError = new AuthFlowError({
+          code: 'account_verification_unavailable',
+          stage: 'account_verification',
+          cause,
+        });
+        reportAuthFailure(authError, instance);
+        throw authError;
+      }
+      await clearTokens(generation);
+      const authError =
+        cause instanceof AuthFlowError
+          ? cause
+          : new AuthFlowError({
+              code: 'account_verification_rejected',
+              stage: 'account_verification',
+              cause,
+            });
+      reportAuthFailure(authError, instance);
+      throw authError;
+    }
     if (getAuthSessionGeneration() !== generation) {
       // A sign-out (or another sign-in) happened while this OAuth flow was in
       // flight. That newer state transition already won — don't resurrect this
@@ -312,6 +392,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     setUser(info);
     setStatus('authenticated');
+    trackAuthStage('authentication_completed', {
+      stage: 'account_verification',
+      instanceUrl: instance,
+    });
   }, [instanceUrl]);
 
   const signOut = useCallback(async () => {
