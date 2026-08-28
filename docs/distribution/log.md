@@ -14,6 +14,12 @@ Format:
 
 ---
 
+## 2026-08-28 — App Review rejected 0.1.1 (5): sign-in reproduction (CW-723)
+
+- Submission `863ef39c-ac41-41f9-92ed-cb9733062ce4` was rejected after review on 2026-08-26 using an iPad Air 11-inch (M3); Apple supplied a screenshot of the login screen showing `Sign-in failed`.
+- Reproduced the identical state on an iPad Air 11-inch Release simulator build: production reachability, registered OAuth client/redirect, Apple system consent, and the hosted OAuth page all passed; closing the system auth session returned to the screenshot state.
+- The screenshot therefore does not locate the failure: cancellation and genuine OAuth callback failures currently collapse to the same fallback copy. CW-723 adds reproduction-first auth coverage; no production auth behavior changed in this pass.
+
 ## 2026-08-12 — TestFlight build 0.1.1 (5) uploaded (006, CW-576)
 
 - Cut from **`master`** at `1747244` (merge of #179), identical to `develop` at the time — 55 commits since the 0.1.1 (4) submission.

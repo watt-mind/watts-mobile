@@ -19,6 +19,25 @@ Unit logic stays on Vitest. Maestro covers cold launch, tab navigation, and open
 
 **Rule of thumb:** if a bug can be caught by asserting a mapper or pure function, put it in Vitest. Maestro only for “athlete can open the app and complete the daily loop.”
 
+### Authentication lifecycle coverage
+
+The system browser is an OS-owned boundary, so auth coverage is intentionally split instead of
+pretending the fixture-login Maestro path proves production PKCE.
+
+| Lifecycle step | Automated coverage | Release/manual evidence |
+|----------------|--------------------|-------------------------|
+| Cold launch without tokens | `maestro/smoke-unauth.yaml` | Login screen in phone compatibility mode on iPad |
+| Create account / Sign in entry points | Maestro asserts both CTAs and legal/self-hosted links | Both CTAs must open the hosted OAuth page |
+| PKCE request + callback | `src/auth/__tests__/oauth.test.ts` checks client, redirect, scopes, verifier, success, cancel/dismiss, malformed callback, and exchange errors | Apple/Google provider round trip in `ASWebAuthenticationSession` |
+| Token persistence / refresh | `oauth.test.ts`, `tokenStorage.test.ts`, API refresh/race tests | Relaunch after a successful provider sign-in |
+| Session bootstrap | API user-info/refresh tests plus authenticated shell smoke | Cold relaunch of a signed-in TestFlight build |
+| Sign out | `tokenStorage.test.ts`, `sessionTeardown.test.ts`, API generation/race tests | Sign out → login screen → cold relaunch remains signed out |
+
+For an App Review reproduction, record each boundary separately: hosted reachability, Apple’s
+system consent sheet, hosted OAuth page, provider return, token exchange, user-info, and sign-out.
+The red login-screen fallback alone is not enough evidence: an explicit system-browser cancel
+currently renders the same `Sign-in failed` text as a genuine callback failure.
+
 ---
 
 ## Maintaining e2e during development
