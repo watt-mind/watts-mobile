@@ -21,6 +21,7 @@ Format:
 - Added upload safeguards that reject wrong dimensions or duplicate image content, replace the complete phone-screenshot set in order, and support a screenshot-only edit that leaves listing copy, icon, and feature graphic untouched.
 - Google Play accepted all six images into an API edit, but the service account lacks edit-commit permission, so the script rolled the edit back. The signed-in Console upload is also waiting for local-file access in the ChatGPT Chrome extension. The live four-image listing remains unchanged until that permission is enabled and the owner-session save is completed.
 - E2E fixture scope drift discovered during capture is tracked separately as CW-733; the capture token used the canonical companion scope list and no fixture credentials were shipped or committed.
+- Correction: local-file access was enabled, and the owner session selected the six API-uploaded assets in the intended order, saved the listing, and submitted the phone-screenshot change to Google. Publishing overview confirmed `1 change sent for review`; this restarted the review already in progress, as Play Console warned it would.
 
 ## 2026-08-29 — Android auth-remediation 0.1.1 (7) on Play Internal (CW-730)
 
