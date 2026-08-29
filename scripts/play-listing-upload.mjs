@@ -4,9 +4,10 @@
  * via the Play Developer API. Text metadata is assumed already saved in Console.
  *
  * Usage:
- *   node scripts/play-listing-upload.mjs [--dry-run]
+ *   node scripts/play-listing-upload.mjs [--dry-run] [--screenshots-only]
  */
 
+import { createHash } from 'node:crypto';
 import { createReadStream, existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -16,15 +17,21 @@ const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const PACKAGE_NAME = 'com.coachwatts.app';
 const LANGUAGE = 'en-US';
 const LISTING_DIR = join(ROOT, 'dist', 'play-listing');
-const SERVICE_ACCOUNT = join(ROOT, 'credentials/android/play-service-account.json');
+const SERVICE_ACCOUNT = resolve(
+  process.env.PLAY_SERVICE_ACCOUNT_PATH ??
+    join(ROOT, 'credentials/android/play-service-account.json'),
+);
 
 const PHONE_SCREENSHOTS = [
-  '01-today-insight.png',
-  '02-today-nutrition.png',
-  '04-plan.png',
-  '05-log.png',
-  '06-coach.png',
+  '01-android-today.png',
+  '02-android-plan.png',
+  '03-android-coach.png',
+  '04-android-log.png',
+  '05-android-nutrition.png',
+  '06-android-health-connect.png',
 ];
+
+const PHONE_SCREENSHOT_SIZE = { width: 1080, height: 1920 };
 
 const SHORT_DESCRIPTION =
   'AI endurance coach companion: today\u2019s session, wellness, fueling & coach chat.';
@@ -48,27 +55,73 @@ Sign in with Google or Apple via OAuth in your system browser. Works with the ho
 Privacy: https://coachwatts.com/privacy
 Support: support@coachwatts.com`;
 
+function readPngSize(filePath) {
+  const buffer = readFileSync(filePath);
+  const pngSignature = '89504e470d0a1a0a';
+  if (buffer.length < 24 || buffer.subarray(0, 8).toString('hex') !== pngSignature) {
+    throw new Error(`Expected a PNG file: ${filePath}`);
+  }
+
+  return {
+    width: buffer.readUInt32BE(16),
+    height: buffer.readUInt32BE(20),
+    sha256: createHash('sha256').update(buffer).digest('hex'),
+  };
+}
+
+function validatePhoneScreenshots(paths) {
+  if (paths.length < 4) {
+    throw new Error(
+      'Google Play requires at least four distinct phone screenshots for this listing',
+    );
+  }
+
+  const hashes = new Set();
+  for (const filePath of paths) {
+    const { width, height, sha256 } = readPngSize(filePath);
+    if (width !== PHONE_SCREENSHOT_SIZE.width || height !== PHONE_SCREENSHOT_SIZE.height) {
+      throw new Error(
+        `Phone screenshot must be ${PHONE_SCREENSHOT_SIZE.width}x${PHONE_SCREENSHOT_SIZE.height}: ${filePath} is ${width}x${height}`,
+      );
+    }
+    if (hashes.has(sha256)) {
+      throw new Error(`Duplicate phone screenshot content: ${filePath}`);
+    }
+    hashes.add(sha256);
+  }
+}
+
 async function main() {
   const dryRun = process.argv.includes('--dry-run');
-
-  if (!existsSync(SERVICE_ACCOUNT)) {
-    throw new Error(`Missing ${SERVICE_ACCOUNT}`);
-  }
+  const screenshotsOnly = process.argv.includes('--screenshots-only');
 
   const iconPath = join(LISTING_DIR, 'app-icon-512x512.png');
   const featurePath = join(LISTING_DIR, 'feature-graphic-1024x500.png');
-  for (const p of [iconPath, featurePath, ...PHONE_SCREENSHOTS.map((f) => join(LISTING_DIR, f))]) {
+  const phoneScreenshotPaths = PHONE_SCREENSHOTS.map((file) => join(LISTING_DIR, file));
+  const requiredAssets = screenshotsOnly
+    ? phoneScreenshotPaths
+    : [iconPath, featurePath, ...phoneScreenshotPaths];
+  for (const p of requiredAssets) {
     if (!existsSync(p)) throw new Error(`Missing asset: ${p}`);
   }
+  validatePhoneScreenshots(phoneScreenshotPaths);
 
   if (dryRun) {
     console.log('Dry run — would upload:');
-    console.log('  icon:', iconPath);
-    console.log('  featureGraphic:', featurePath);
+    if (!screenshotsOnly) {
+      console.log('  icon:', iconPath);
+      console.log('  featureGraphic:', featurePath);
+    }
     for (const f of PHONE_SCREENSHOTS) console.log('  phoneScreenshot:', join(LISTING_DIR, f));
-    console.log('  shortDescription:', SHORT_DESCRIPTION);
-    console.log('  fullDescription length:', FULL_DESCRIPTION.length);
+    if (!screenshotsOnly) {
+      console.log('  shortDescription:', SHORT_DESCRIPTION);
+      console.log('  fullDescription length:', FULL_DESCRIPTION.length);
+    }
     return;
+  }
+
+  if (!existsSync(SERVICE_ACCOUNT)) {
+    throw new Error(`Missing ${SERVICE_ACCOUNT}`);
   }
 
   const credentials = JSON.parse(readFileSync(SERVICE_ACCOUNT, 'utf8'));
@@ -84,18 +137,20 @@ async function main() {
   if (!editId) throw new Error('edits.insert returned no edit id');
 
   try {
-    console.log('Updating listing text…');
-    await play.edits.listings.update({
-      packageName: PACKAGE_NAME,
-      editId,
-      language: LANGUAGE,
-      requestBody: {
+    if (!screenshotsOnly) {
+      console.log('Updating listing text…');
+      await play.edits.listings.update({
+        packageName: PACKAGE_NAME,
+        editId,
         language: LANGUAGE,
-        title: 'Coach Watts',
-        shortDescription: SHORT_DESCRIPTION,
-        fullDescription: FULL_DESCRIPTION,
-      },
-    });
+        requestBody: {
+          language: LANGUAGE,
+          title: 'Coach Watts',
+          shortDescription: SHORT_DESCRIPTION,
+          fullDescription: FULL_DESCRIPTION,
+        },
+      });
+    }
 
     async function uploadImage(imageType, filePath) {
       console.log(`  upload ${imageType}: ${filePath}`);
@@ -111,13 +166,22 @@ async function main() {
       });
     }
 
-    console.log('Uploading icon…');
-    await uploadImage('icon', iconPath);
+    if (!screenshotsOnly) {
+      console.log('Uploading icon…');
+      await uploadImage('icon', iconPath);
 
-    console.log('Uploading feature graphic…');
-    await uploadImage('featureGraphic', featurePath);
+      console.log('Uploading feature graphic…');
+      await uploadImage('featureGraphic', featurePath);
+    }
 
     console.log('Uploading phone screenshots…');
+    console.log('  deleting existing phone screenshots first…');
+    await play.edits.images.deleteall({
+      packageName: PACKAGE_NAME,
+      editId,
+      language: LANGUAGE,
+      imageType: 'phoneScreenshots',
+    });
     for (const file of PHONE_SCREENSHOTS) {
       await uploadImage('phoneScreenshots', join(LISTING_DIR, file));
     }
