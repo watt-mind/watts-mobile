@@ -14,6 +14,13 @@ Format:
 
 ---
 
+## 2026-08-29 — Android auth-remediation 0.1.1 (7) submitted to Play Production review (CW-730)
+
+- With explicit product-owner authorization to accept the lack of a physical Android device, promoted **0.1.1 / versionCode 7** from Play Internal into a **100% Production rollout** for all **177 targeted countries / regions**.
+- Play release validation found one non-blocking warning: no deobfuscation file is associated with the AAB. Supported-device counts are unchanged from versionCode 6; the bundle targets SDK 36 and supports API 26+.
+- Publishing overview accepted the submission and now shows **Changes in review** → Production → `7 (0.1.1)` → **Start full rollout**. Managed publishing remains **off**, so the release will publish automatically if Google approves it.
+- Remaining risk was accepted based on the matching production-configured emulator smoke: clean launch, hosted `prompt=login` account choice, and clean cancellation passed; physical Play-installed login/logout/account A-to-B switching was not available.
+
 ## 2026-08-29 — Android auth-remediation 0.1.1 (7) on Play Internal (CW-730)
 
 - Built signed AAB **0.1.1 / versionCode 7** (`coach-watts-0.1.1-vc7.aab`, 98.7 MiB) from `origin/develop` after the shared mobile auth remediation, using the production environment with no `EXPO_PUBLIC_E2E_*` variables; clean Expo prebuild, Gradle `bundleRelease`, signing validation, and lint-vital passed.

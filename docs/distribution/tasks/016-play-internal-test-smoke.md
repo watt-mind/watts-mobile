@@ -1,6 +1,6 @@
 # 016 — Play internal test smoke
 
-**Area:** qa · **Priority:** medium · **Status:** in-progress (versionCode 7 auth-remediation retest)
+**Area:** qa · **Priority:** medium · **Status:** done with accepted device-test exception (versionCode 7)
 
 **Depends on:** [015](./015-android-production-build.md)
 
@@ -13,6 +13,8 @@ How to add yourself / others as Internal testers and use the opt-in link: [../pl
 ## Smoke script
 
 **Replacement candidate (2026-08-29):** Play Internal has **0.1.1 / versionCode 7**. A matching production-configured signed APK passed clean launch, hosted `prompt=login` account choice, and cancellation on `Pixel_10_Pro_XL`. Before Production promotion, repeat the authentication rows below from the Play-installed build on a physical Android device; the emulator Chrome renderer failed after reopening Custom Tabs and the AVD was not wiped.
+
+**Accepted exception (2026-08-29):** No physical Android device was available. The product owner explicitly authorized Production promotion based on the matching signed release APK smoke and automated auth coverage. The unchecked physical-device rows below remain documented as residual release risk rather than silently recorded as passed.
 
 1. [ ] Install from Internal testing (opted in via [play-internal-testing.md](../play-internal-testing.md)); cold start → branded splash/icon. *(Release APK on emulator 2026-08-09: branded sign-in + launcher icon — Play-install path still open.)*
 2. [ ] Sign in via PKCE against `https://coachwatts.com` (Chrome Custom Tabs / system browser).
