@@ -16,7 +16,7 @@ Fill the main store listing Google requires for testing tracks and production. C
 | Full description | Reuse ASC voice + “not a medical device” disclaimer ([store-privacy-checklist.md](../../store-privacy-checklist.md)) | done |
 | App icon 512×512 | From Coach Watts mark / `assets/images/icon.png` pipeline (`dist/play-listing/app-icon-512x512.png`) | done |
 | Feature graphic 1024×500 | Real hero (`dist/play-listing/feature-graphic-1024x500.png`) | done |
-| Phone screenshots | From **release / Internal** build (`dist/play-listing/01-today-insight.png` .. `06-coach.png` & framed set) | done |
+| Phone screenshots | Six unique Android captures from the release UI (`dist/play-listing/01-android-today.png` .. `06-android-health-connect.png`) | prepared; Console upload blocked on local-file access (CW-732) |
 | Contact / support | Align with `support@coachwatts.com` | done |
 
 Skip tablet screenshots for v1 (phone-first; don’t claim tablet support).
@@ -38,11 +38,15 @@ Skip tablet screenshots for v1 (phone-first; don’t claim tablet support).
 1. [x] Short description + full description (companion positioning; **no medical claims**).
 2. [x] App icon 512×512 (`dist/play-listing/app-icon-512x512.png`).
 3. [x] Feature graphic 1024×500 (`dist/play-listing/feature-graphic-1024x500.png`).
-4. [x] Phone screenshots prepared from release/internal-test build (`dist/play-listing/`).
+4. [ ] Replace the duplicated iPhone-framed production listing with six unique **Android** captures at 1080×1920: Today, Plan, Coach, Log, Nutrition, Health Connect (CW-732).
 5. [ ] Optional: tablet screenshots only if we claim tablet support (v1 phone-first — skip).
 6. [x] Contact email / support — align with `support@coachwatts.com` / watt-mind ops.
 7. [x] Cross-check listing copy against Data safety ([012](./012-play-data-safety-and-content.md)).
 
+Publishing blocker (2026-08-29): the Play service account can create an edit and upload all six assets but cannot commit the edit. The signed-in owner session can save the listing after the ChatGPT Chrome extension is allowed to access local file URLs. The existing live carousel remains unchanged in the meantime.
+
 ## Done when
 
 - Main store listing has required graphics + text for the locales we ship (EN-US first).
+- The first three phone screenshots are Today, Plan, and Coach; every screenshot is visually distinct, uses real Android app UI, and contains no iPhone/device frame.
+- `scripts/play-listing-upload.mjs` validates screenshot dimensions and content hashes, then deletes the old phone-screenshot set before uploading the ordered replacement set.

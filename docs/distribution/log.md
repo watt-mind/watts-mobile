@@ -14,6 +14,14 @@ Format:
 
 ---
 
+## 2026-08-29 — Android Play screenshot replacement prepared (CW-732)
+
+- Audited the live Google Play phone carousel: all four slots resolved to the same Coach-chat image and used an iPhone-style device frame.
+- Captured six distinct Android release-UI surfaces at 1080×1920 in the intended order: Today, Plan nutrition strategy, Coach, Log, meal logging, and Health Connect. The captures use real app UI with no device frame or development overlay.
+- Added upload safeguards that reject wrong dimensions or duplicate image content, replace the complete phone-screenshot set in order, and support a screenshot-only edit that leaves listing copy, icon, and feature graphic untouched.
+- Google Play accepted all six images into an API edit, but the service account lacks edit-commit permission, so the script rolled the edit back. The signed-in Console upload is also waiting for local-file access in the ChatGPT Chrome extension. The live four-image listing remains unchanged until that permission is enabled and the owner-session save is completed.
+- E2E fixture scope drift discovered during capture is tracked separately as CW-733; the capture token used the canonical companion scope list and no fixture credentials were shipped or committed.
+
 ## 2026-08-29 — Android auth-remediation 0.1.1 (7) on Play Internal (CW-730)
 
 - Built signed AAB **0.1.1 / versionCode 7** (`coach-watts-0.1.1-vc7.aab`, 98.7 MiB) from `origin/develop` after the shared mobile auth remediation, using the production environment with no `EXPO_PUBLIC_E2E_*` variables; clean Expo prebuild, Gradle `bundleRelease`, signing validation, and lint-vital passed.
