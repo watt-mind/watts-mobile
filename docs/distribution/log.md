@@ -14,6 +14,14 @@ Format:
 
 ---
 
+## 2026-08-29 — Android auth-remediation 0.1.1 (7) on Play Internal (CW-730)
+
+- Built signed AAB **0.1.1 / versionCode 7** (`coach-watts-0.1.1-vc7.aab`, 98.7 MiB) from `origin/develop` after the shared mobile auth remediation, using the production environment with no `EXPO_PUBLIC_E2E_*` variables; clean Expo prebuild, Gradle `bundleRelease`, signing validation, and lint-vital passed.
+- Google Play Developer API accepted versionCode 7 and committed the **Internal testing** rollout.
+- Matching production-configured signed APK smoke on `Pixel_10_Pro_XL`: branded clean launch passed; Continue opened the hosted `prompt=login` account-choice screen in Chrome Custom Tabs (Apple / Google / Intervals / Cancel) instead of silently reusing a hosted cookie; Android Back canceled cleanly without a false sign-in error.
+- Promotion gate remains open: complete a Play-installed login → logout → relogin → account A-to-B switch on a physical Android device. The emulator's Chrome renderer became blank after reopening Custom Tabs, then the AVD failed two clean reboot attempts; no AVD data wipe was performed and versionCode 7 was **not** promoted to Production review on incomplete evidence.
+- Related hosted fix: coach-wattz PRs #594 and #595; production OAuth now honors the mobile `prompt=login` request.
+
 ## 2026-08-28 — Replacement TestFlight build 0.1.1 (6) uploaded (CW-728)
 
 - Cut from the released mobile auth-remediation source (`master` at `2ec8273`, merge of #192), then bumped `expo.ios.buildNumber` **5 → 6**.

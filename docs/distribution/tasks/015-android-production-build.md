@@ -18,7 +18,7 @@ Produce a signed Play AAB and land it on Internal testing so listed testers can 
 ## Steps
 
 1. [x] Bump user-facing version if needed (`pnpm release:patch` / etc.) — **0.1.1** unchanged.
-2. [x] Bump Android **versionCode** for every new Play upload (Play rejects reuse). Log in [log.md](../log.md) — **vc6** (2026-08-09).
+2. [x] Bump Android **versionCode** for every new Play upload (Play rejects reuse). Log in [log.md](../log.md) — **vc7** (2026-08-29 auth-remediation replacement).
 3. [x] Confirm production `.env` (Sentry + Maps; no `EXPO_PUBLIC_E2E_*`) — [014](./014-eas-android-credentials.md).
 4. [x] Preferred one-shot (Mac / Mini):
    ```bash
@@ -27,7 +27,7 @@ Produce a signed Play AAB and land it on Internal testing so listed testers can 
    Or build only, then Console upload / `--upload-internal --aab …`. Manual Gradle path still OK: `expo prebuild -p android --clean` → `./gradlew bundleRelease` — signing via [014](./014-eas-android-credentials.md).
 5. [ ] Ensure Internal **testers** exist and have the opt-in link — [../play-internal-testing.md](../play-internal-testing.md).
 6. [x] Log `versionName` + `versionCode` in [log.md](../log.md).
-7. [ ] Smoke on device — [016](./016-play-internal-test-smoke.md); branded icon/splash ([../../store-checklist.md](../../store-checklist.md)) — release APK smoke on emulator 2026-08-09; Play-install smoke still open.
+7. [ ] Smoke on device — [016](./016-play-internal-test-smoke.md); versionCode 7 clean launch, hosted account choice, and cancellation passed on a matching signed release APK on 2026-08-29; Play-installed physical-device login/logout/account-switch smoke remains open.
 
 ## Done when
 

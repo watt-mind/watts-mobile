@@ -37,7 +37,7 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "package": "com.coachwatts.app",
-      "versionCode": 6,
+      "versionCode": 7,
       "permissions": [
         "android.permission.health.READ_SLEEP",
         "android.permission.health.READ_WEIGHT",
