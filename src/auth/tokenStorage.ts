@@ -14,49 +14,80 @@ export type StoredTokens = {
   accessExpiresAt: number | null;
 };
 
+let tokenMutationQueue: Promise<void> = Promise.resolve();
+
+function mutateTokens<T>(operation: () => Promise<T>): Promise<T> {
+  const result = tokenMutationQueue.then(operation, operation);
+  tokenMutationQueue = result.then(
+    () => undefined,
+    () => undefined,
+  );
+  return result;
+}
+
+async function clearTokenKeys(): Promise<void> {
+  await deleteItemAsync(ACCESS_KEY);
+  await deleteItemAsync(REFRESH_KEY);
+  await deleteItemAsync(EXPIRES_KEY);
+  await deleteItemAsync(SESSION_GEN_KEY);
+}
+
 /**
  * Persist tokens. Explicit `null` clears that field; `undefined` preserves the prior value
  * (used by refresh rotation when the server omits a new refresh token / expiry).
  */
-export async function saveTokens(tokens: {
-  accessToken: string;
-  refreshToken?: string | null;
-  expiresIn?: number | null;
-}): Promise<StoredTokens> {
-  const sessionGeneration = getAuthSessionGeneration();
-  await setItemAsync(ACCESS_KEY, tokens.accessToken);
-  await setItemAsync(SESSION_GEN_KEY, String(sessionGeneration));
-
-  if (tokens.refreshToken !== undefined) {
-    if (tokens.refreshToken) {
-      await setItemAsync(REFRESH_KEY, tokens.refreshToken);
-    } else {
-      await deleteItemAsync(REFRESH_KEY);
+export async function saveTokens(
+  tokens: {
+    accessToken: string;
+    refreshToken?: string | null;
+    expiresIn?: number | null;
+  },
+  expectedGeneration = getAuthSessionGeneration(),
+): Promise<StoredTokens> {
+  return mutateTokens(async () => {
+    if (expectedGeneration !== getAuthSessionGeneration()) {
+      throw new Error('Auth session changed before token save');
     }
-  }
 
-  let accessExpiresAt: number | null;
-  if (tokens.expiresIn !== undefined) {
-    if (typeof tokens.expiresIn === 'number' && Number.isFinite(tokens.expiresIn)) {
-      accessExpiresAt = Date.now() + tokens.expiresIn * 1000;
-      await setItemAsync(EXPIRES_KEY, String(accessExpiresAt));
-    } else {
-      accessExpiresAt = null;
-      await deleteItemAsync(EXPIRES_KEY);
+    await setItemAsync(ACCESS_KEY, tokens.accessToken);
+    await setItemAsync(SESSION_GEN_KEY, String(expectedGeneration));
+
+    if (tokens.refreshToken !== undefined) {
+      if (tokens.refreshToken) {
+        await setItemAsync(REFRESH_KEY, tokens.refreshToken);
+      } else {
+        await deleteItemAsync(REFRESH_KEY);
+      }
     }
-  } else {
-    const expiresRaw = await getItemAsync(EXPIRES_KEY);
-    accessExpiresAt = expiresRaw ? Number(expiresRaw) : null;
-  }
 
-  const refreshToken =
-    tokens.refreshToken !== undefined ? tokens.refreshToken : await getItemAsync(REFRESH_KEY);
+    let accessExpiresAt: number | null;
+    if (tokens.expiresIn !== undefined) {
+      if (typeof tokens.expiresIn === 'number' && Number.isFinite(tokens.expiresIn)) {
+        accessExpiresAt = Date.now() + tokens.expiresIn * 1000;
+        await setItemAsync(EXPIRES_KEY, String(accessExpiresAt));
+      } else {
+        accessExpiresAt = null;
+        await deleteItemAsync(EXPIRES_KEY);
+      }
+    } else {
+      const expiresRaw = await getItemAsync(EXPIRES_KEY);
+      accessExpiresAt = expiresRaw ? Number(expiresRaw) : null;
+    }
 
-  return {
-    accessToken: tokens.accessToken,
-    refreshToken,
-    accessExpiresAt,
-  };
+    if (expectedGeneration !== getAuthSessionGeneration()) {
+      await clearTokenKeys();
+      throw new Error('Auth session changed during token save');
+    }
+
+    const refreshToken =
+      tokens.refreshToken !== undefined ? tokens.refreshToken : await getItemAsync(REFRESH_KEY);
+
+    return {
+      accessToken: tokens.accessToken,
+      refreshToken,
+      accessExpiresAt,
+    };
+  });
 }
 
 export async function loadTokens(): Promise<StoredTokens | null> {
@@ -78,21 +109,19 @@ export async function loadTokens(): Promise<StoredTokens | null> {
  * newer login's tokens (stale failAuthSession must not wipe a fresh session).
  */
 export async function clearTokens(expectedGeneration?: number): Promise<void> {
-  if (expectedGeneration !== undefined) {
-    const storedGenRaw = await getItemAsync(SESSION_GEN_KEY);
-    if (storedGenRaw != null && storedGenRaw !== '') {
-      const storedGen = Number(storedGenRaw);
-      if (Number.isFinite(storedGen) && storedGen !== expectedGeneration) {
+  return mutateTokens(async () => {
+    if (expectedGeneration !== undefined) {
+      const storedGenRaw = await getItemAsync(SESSION_GEN_KEY);
+      if (storedGenRaw != null && storedGenRaw !== '') {
+        const storedGen = Number(storedGenRaw);
+        if (Number.isFinite(storedGen) && storedGen !== expectedGeneration) {
+          return;
+        }
+      } else if (expectedGeneration !== getAuthSessionGeneration()) {
         return;
       }
     }
-    if (expectedGeneration !== getAuthSessionGeneration()) {
-      return;
-    }
-  }
 
-  await deleteItemAsync(ACCESS_KEY);
-  await deleteItemAsync(REFRESH_KEY);
-  await deleteItemAsync(EXPIRES_KEY);
-  await deleteItemAsync(SESSION_GEN_KEY);
+    await clearTokenKeys();
+  });
 }

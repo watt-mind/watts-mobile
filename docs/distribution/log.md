@@ -14,6 +14,67 @@ Format:
 
 ---
 
+## 2026-08-29 — Android Play screenshot replacement prepared (CW-732)
+
+- Audited the live Google Play phone carousel: all four slots resolved to the same Coach-chat image and used an iPhone-style device frame.
+- Captured six distinct Android release-UI surfaces at 1080×1920 in the intended order: Today, Plan nutrition strategy, Coach, Log, meal logging, and Health Connect. The captures use real app UI with no device frame or development overlay.
+- Added upload safeguards that reject wrong dimensions or duplicate image content, replace the complete phone-screenshot set in order, and support a screenshot-only edit that leaves listing copy, icon, and feature graphic untouched.
+- Google Play accepted all six images into an API edit, but the service account lacks edit-commit permission, so the script rolled the edit back. The signed-in Console upload is also waiting for local-file access in the ChatGPT Chrome extension. The live four-image listing remains unchanged until that permission is enabled and the owner-session save is completed.
+- E2E fixture scope drift discovered during capture is tracked separately as CW-733; the capture token used the canonical companion scope list and no fixture credentials were shipped or committed.
+- Correction: local-file access was enabled, and the owner session selected the six API-uploaded assets in the intended order, saved the listing, and submitted the phone-screenshot change to Google. Publishing overview confirmed `1 change sent for review`; this restarted the review already in progress, as Play Console warned it would.
+
+## 2026-08-29 — Android auth-remediation 0.1.1 (7) on Play Internal (CW-730)
+
+- Built signed AAB **0.1.1 / versionCode 7** (`coach-watts-0.1.1-vc7.aab`, 98.7 MiB) from `origin/develop` after the shared mobile auth remediation, using the production environment with no `EXPO_PUBLIC_E2E_*` variables; clean Expo prebuild, Gradle `bundleRelease`, signing validation, and lint-vital passed.
+- Google Play Developer API accepted versionCode 7 and committed the **Internal testing** rollout.
+- Matching production-configured signed APK smoke on `Pixel_10_Pro_XL`: branded clean launch passed; Continue opened the hosted `prompt=login` account-choice screen in Chrome Custom Tabs (Apple / Google / Intervals / Cancel) instead of silently reusing a hosted cookie; Android Back canceled cleanly without a false sign-in error.
+- Promotion gate remains open: complete a Play-installed login → logout → relogin → account A-to-B switch on a physical Android device. The emulator's Chrome renderer became blank after reopening Custom Tabs, then the AVD failed two clean reboot attempts; no AVD data wipe was performed and versionCode 7 was **not** promoted to Production review on incomplete evidence.
+- Related hosted fix: coach-wattz PRs #594 and #595; production OAuth now honors the mobile `prompt=login` request.
+
+## 2026-08-28 — Replacement TestFlight build 0.1.1 (6) uploaded (CW-728)
+
+- Cut from the released mobile auth-remediation source (`master` at `2ec8273`, merge of #192), then bumped `expo.ios.buildNumber` **5 → 6**.
+- Store-safety verification passed before prebuild: **1,438 Vitest tests**, TypeScript, ESLint (0 errors; 11 existing warnings), Maestro flow validation, Expo config validation, and diff checks. The release environment contains no `EXPO_PUBLIC_E2E_*` keys.
+- `npx expo prebuild -p ios --clean` → signed Xcode archive → `xcodebuild -exportArchive` with `destination=upload`; App Store Connect reported **Upload succeeded**.
+- Artifact: `dist/ios/CoachWatts-0.1.1-6.xcarchive`; logs: `dist/ios/archive-0.1.1-6.log` and `dist/ios/export-upload-0.1.1-6.log`.
+- App Store Connect processing completed: **0.1.1 (6)** is **Ready to Submit**, expires in 90 days, and was attached automatically to internal group **WM**. Prebuilt ExpoCameraBarcodeScanning, React, ReactNativeDependencies, and Hermes dSYM warnings were non-blocking.
+- Next gate: execute every iPhone + iPad authentication row in [007](./tasks/007-testflight-smoke.md) before resubmitting to App Review. External group **ALPHA** has not been added to build 6.
+
+## 2026-08-28 — App Review auth remediation started (CW-724–CW-727)
+
+- Captured the remediation as four Linear issues: typed cancellation-safe mobile entry (CW-724), OAuth-compliant hosted cancellation/provider recovery (CW-725), hosted token revocation/account isolation (CW-726), and a deterministic reviewer/release gate (CW-727).
+- Resubmission is now gated on a replacement TestFlight binary passing the documented iPhone + iPad authentication matrix and on ASC Distribution containing the active seeded Google demo credentials.
+- Sign in with Apple remains an equally available Guideline 4.8 option and must pass new, returning, and Hide My Email smokes; it is no longer the only instructed reviewer path.
+- No replacement build has been uploaded or submitted yet.
+
+## 2026-08-28 — App Review rejected 0.1.1 (5): sign-in reproduction (CW-723)
+
+- Submission `863ef39c-ac41-41f9-92ed-cb9733062ce4` was rejected after review on 2026-08-26 using an iPad Air 11-inch (M3); Apple supplied a screenshot of the login screen showing `Sign-in failed`.
+- Reproduced the identical state on an iPad Air 11-inch Release simulator build: production reachability, registered OAuth client/redirect, Apple system consent, and the hosted OAuth page all passed; closing the system auth session returned to the screenshot state.
+- The screenshot therefore does not locate the failure: cancellation and genuine OAuth callback failures currently collapse to the same fallback copy. CW-723 adds reproduction-first auth coverage; no production auth behavior changed in this pass.
+
+## 2026-08-12 — TestFlight build 0.1.1 (5) uploaded (006, CW-576)
+
+- Cut from **`master`** at `1747244` (merge of #179), identical to `develop` at the time — 55 commits since the 0.1.1 (4) submission.
+- Bumped `expo.ios.buildNumber` **4 → 5**; parked `.env.local` (e2e flags) for the store prebuild and restored it afterwards.
+- `npx expo prebuild -p ios --clean` → `xcodebuild archive` → `xcodebuild -exportArchive` with `dist/ios/ExportOptions-upload.plist` (`destination=upload`).
+- Artifacts: `dist/ios/CoachWatts-0.1.1-5.xcarchive`; logs `dist/ios/archive-0.1.1-5.log`, `dist/ios/export-upload-0.1.1-5.log`.
+- **Upload succeeded** to App Store Connect; ASC processing started. dSYM warning for `hermesvm.framework` (prebuilt Hermes, non-blocking — same class of warning as build 4).
+- What testers get over 0.1.1 (4): **CW-571** Apple Health no longer claims *Connected* when nothing is readable and the dead "Request access again" button is gone; **CW-573** Recent workouts Sync / Sync all are no longer silently inert when Sync to Coach Watts is off; **CW-575** flaky measurement test.
+- **0.1.1 (4) remains in App Review** — uploading build 5 does not alter that submission; the attached build only changes if it is attached in ASC.
+- ASC processing completed; build 5 reached internal group **WM** automatically.
+- **Distributed to external group ALPHA** (2 testers) by adding the group on the build's Test Information tab, with "What to Test" notes covering the CW-571 badge change and the CW-573 sync controls, and *Automatically notify testers* left on. Beta App Review passed immediately (0.1.1 had already cleared it on an earlier build) — build 5 went straight to **Testing** with groups **WM + AL**.
+- **App Review build swapped 4 → 5** (see below). Initially left on 4, on the reasoning that tester access comes from TestFlight groups rather than the attached build — correct for testers, but it left the *public* release as build 4, still carrying the CW-571 and CW-573 bugs. Swapped once that was called out.
+
+## 2026-08-12 — App Review build swapped to 0.1.1 (5) (009, CW-576)
+
+- **Why:** the attached build is what ships to the App Store. Leaving 0.1.1 (4) attached would have released the false "Connected" Health badge and the inert Recent workouts sync controls to the public, then required an immediate 0.1.2 fast-follow.
+- **Cost accepted:** ASC only permits changing the build by *removing the version from review*, forfeiting the queue position held since 2026-08-09. Apple had **not** started reviewing in those 3 days, so the forfeited position had not yet paid off.
+- Sequence: **remove this version from review** → status **Developer Rejected** → detached build 4 → **Add Build** → selected **5** → **Save** → status **Prepare for Submission** → **Add for Review** → **Submit for Review**.
+- Metadata survived the removal intact: **9 of 10** iPhone 6.5" screenshots, promotional text, and description all still present (verified before resubmitting).
+- Result: **1 Item Submitted**, status **Waiting for Review** with build **5**, up to 48 hours.
+- Note for next time: swap the build *before* concluding a distribution step. The build attached at submission is the binary the public gets — TestFlight group membership is a separate axis and does not affect it.
+
 ## 2026-08-09 — Play production submitted for review (017)
 
 - **Publishing overview → Send 11 changes for review** confirmed (production **6 (0.1.1)**, **176 countries**, store listing, Data safety, Sign in details, etc.).

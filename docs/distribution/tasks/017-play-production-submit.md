@@ -1,6 +1,6 @@
 # 017 — Promote to Play production / review
 
-**Area:** review · **Priority:** medium · **Status:** in-progress (submitted — awaiting Google review)
+**Area:** review · **Priority:** medium · **Status:** in-progress (versionCode 7 promotion gated on auth smoke)
 
 **Depends on:** [012](./012-play-data-safety-and-content.md), [013](./013-play-listing-assets.md), [016](./016-play-internal-test-smoke.md)
 
@@ -9,6 +9,16 @@
 Send the tested AAB through closed/open testing as needed, then production review.
 
 ## Steps
+
+### Auth-remediation replacement (2026-08-29)
+
+1. [x] Build and roll out **0.1.1 / versionCode 7** to Play Internal.
+2. [ ] Complete [016](./016-play-internal-test-smoke.md) versionCode 7 login/logout/account-switch matrix on a physical Play-installed build.
+3. [ ] Production → create/update release → **Add from library** → select versionCode **7**.
+4. [ ] Preview, save, and send the versionCode 7 production change for Google review.
+5. [ ] Record the resulting review/publication state in [log.md](../log.md).
+
+### Previous versionCode 6 submission
 
 1. [x] Internal **0.1.1 (6)** on Play Internal; skip Closed/Open → **Production** direct (first public release).
 2. [x] App content checklist green (012); store listing saved with graphics (013).

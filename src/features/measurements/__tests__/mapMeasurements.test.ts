@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   emptyMeasurementForm,
@@ -176,10 +176,26 @@ describe('mapMeasurements comma-decimal input (CW-555)', () => {
   });
 
   it('builds the same payload for comma and period decimals', () => {
-    const comma = toCreatePayload({ ...emptyMeasurementForm('waist'), value: '81,3' }, metricOpts);
-    const period = toCreatePayload({ ...emptyMeasurementForm('waist'), value: '81.3' }, metricOpts);
-    expect(comma).toEqual(period);
-    expect(comma?.value).toBeCloseTo(81.3, 2);
+    // toCreatePayload stamps `recordedAt` from the wall clock, so two calls that
+    // straddle a millisecond boundary produce payloads differing only by 1 ms
+    // and this equality fails at random (CW-575). Freeze the clock rather than
+    // excluding the field — the point of the assertion is that *nothing* but the
+    // decimal separator differs.
+    vi.useFakeTimers();
+    try {
+      const comma = toCreatePayload(
+        { ...emptyMeasurementForm('waist'), value: '81,3' },
+        metricOpts,
+      );
+      const period = toCreatePayload(
+        { ...emptyMeasurementForm('waist'), value: '81.3' },
+        metricOpts,
+      );
+      expect(comma).toEqual(period);
+      expect(comma?.value).toBeCloseTo(81.3, 2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('builds a payload from grouped input', () => {

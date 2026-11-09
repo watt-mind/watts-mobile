@@ -82,6 +82,17 @@ IA: bottom tabs **Today · Plan · Log · Coach · More** (+ activation wizard s
 10. **Store / TestFlight / Play binaries are local** — iOS: `expo prebuild` → Xcode Archive → Organizer/Transporter; Android: `expo prebuild` → Gradle `bundleRelease` → Play Console. Do not default to `eas build` / `eas submit`. Details: [docs/distribution.md](docs/distribution.md), tasks [005](docs/distribution/tasks/005-eas-credentials-and-secrets.md)–[006](docs/distribution/tasks/006-ios-production-build.md), [014](docs/distribution/tasks/014-eas-android-credentials.md)–[015](docs/distribution/tasks/015-android-production-build.md).
 11. **Maestro with the feature** — if you change a companion surface the suite already covers (or add a daily-loop entry point), update `testID`s / `maestro/` flows in the same change. Conventions and PR checklist: [docs/e2e.md](docs/e2e.md) § Maintaining e2e. Vitest for mappers; never enable `EXPO_PUBLIC_E2E_*` on store builds.
 
+## Worktree Lifecycle
+
+Ticket worktrees isolate development instances under `~/Develop/.worktrees/watts-mobile/<TICKET-ID>`.
+
+```bash
+bin/worktree-up.sh CW-600                     # create/refresh worktree + allocate dev port
+bin/worktree-up.sh CW-600 fix modal-zindex    # specify type and branch slug
+bin/worktree-down.sh CW-600                   # safe teardown (refuses if uncommitted/unpushed)
+bin/worktree-down.sh CW-600 --force --delete-branch
+```
+
 <!-- FACTORY:FLOOR:BEGIN -->
 <!-- Generated from watt-mind/factory shared/floor.md. Do not edit here — edit
      the source and re-run `node build/emit.mjs`, or your change is lost on the

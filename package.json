@@ -55,7 +55,7 @@
     "expo-audio": "~57.0.3",
     "expo-auth-session": "~57.0.5",
     "expo-background-task": "~57.0.6",
-    "expo-build-properties": "~57.0.7",
+    "expo-build-properties": "~57.0.9",
     "expo-camera": "~57.0.3",
     "expo-clipboard": "~57.0.1",
     "expo-constants": "~57.0.7",
@@ -107,13 +107,13 @@
     "eslint-config-expo": "~57.0.0",
     "googleapis": "^173.0.0",
     "husky": "^9.1.7",
-    "lint-staged": "^17.2.0",
+    "lint-staged": "^17.6.0",
     "prettier": "^3.9.6",
     "prettier-plugin-tailwindcss": "^0.8.1",
     "release-it": "^19.2.4",
     "release-it-pnpm": "^4.6.6",
     "typescript": "~6.0.3",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.11"
   },
   "pnpm": {
     "overrides": {

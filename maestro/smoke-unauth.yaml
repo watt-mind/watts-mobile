@@ -1,4 +1,4 @@
-# Cold start without e2e auth — expects Sign in chrome. Isolated wipe.
+# Cold start without e2e auth — expects the combined account entry chrome. Isolated wipe.
 # Run with EXPO_PUBLIC_E2E_AUTH unset (normal .env / Metro). Metro must be running.
 appId: com.coachwatts.app
 tags:
@@ -14,5 +14,9 @@ tags:
       id: login-screen
     timeout: 90000
 - assertVisible:
-    id: login-sign-in
-- assertVisible: "Sign in"
+    id: login-continue
+- assertVisible:
+    id: login-legal-notice
+- assertVisible: "Continue"
+- assertVisible: "Continue to sign in or create your account securely in the system browser."
+- assertVisible: "Use self-hosted instance"

@@ -1,0 +1,10 @@
+# This directory holds compliance evidence for App Store / Play screening:
+# bank statements, the company registry extract, the VAT certificate, and a
+# README cataloguing them by account number and tax ID.
+#
+# This repository is PUBLIC. Ignore everything in here except this file — a
+# `git add -A` elsewhere in the tree must never be able to sweep any of it in.
+# That is not hypothetical: the README was committed exactly that way and had to
+# be removed again.
+*
+!.gitignore

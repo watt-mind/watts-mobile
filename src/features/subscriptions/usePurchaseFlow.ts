@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Alert } from 'react-native';
 
 import { friendlyError } from '@/src/api/errors';
@@ -6,6 +6,7 @@ import { hapticLight, hapticSuccess } from '@/src/lib/haptics';
 
 import { activeStoreProductIds, hasActiveWebSubscription, summaryQueryState } from './adapters';
 import { trackPaywallEvent } from './analytics';
+import { createPurchaseLock, withPurchaseLock, type PurchaseLock } from './purchaseLock';
 import { purchaseStorePackage, restoreStorePurchases } from './revenueCat';
 import type { PlanChangeKind, StorePackage } from './types';
 import { useReconcileSubscription, useSubscriptionSummary } from './useSubscriptions';
@@ -38,6 +39,14 @@ export function usePurchaseFlow(source: string) {
   const [busyPackageId, setBusyPackageId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<PurchaseFeedback>(null);
 
+  // Scoped to this hook instance rather than the module: a lock that somehow
+  // leaked (a confirmation promise that never settles) would then block
+  // purchasing only until the screen remounts, instead of for the whole app
+  // session. Two paywall surfaces are never tappable at the same time.
+  const lockRef = useRef<PurchaseLock | null>(null);
+  if (lockRef.current === null) lockRef.current = createPurchaseLock();
+  const lock = lockRef.current;
+
   const confirmWithServer = useCallback(
     async (successMessage: string) => {
       setOperation('Confirming with Coach Watts…');
@@ -59,67 +68,91 @@ export function usePurchaseFlow(source: string) {
   );
 
   const purchase = useCallback(
+    // The whole body runs under the lock, taken synchronously on entry: a
+    // second tap — this plan's CTA or another's — that lands before React has
+    // repainted the CTAs as busy is dropped instead of starting a second
+    // concurrent charge. `withPurchaseLock` releases on every exit path.
     async (item: StorePackage, kind: PlanChangeKind) => {
-      if (kind === 'current') return;
+      await withPurchaseLock(lock, item.id, async () => {
+        if (kind === 'current') return;
 
-      // Belt-and-suspenders: the UI should already hide the plan chooser until
-      // the summary settles, but never let a purchase through without it —
-      // buying blind risks a double web+store charge or a stacked Play sub.
-      if (summaryQueryState(summary) !== 'ready') {
-        setFeedback({
-          type: 'error',
-          text: 'We could not confirm your current subscription status. Pull down to refresh and try again.',
-        });
-        return;
-      }
-
-      // Stacking a store purchase on top of web billing charges twice.
-      if (hasActiveWebSubscription(summary.data)) {
-        const proceed = await confirmDoubleBilling();
-        if (!proceed) {
-          trackPaywallEvent('purchase_cancelled', { source, reason: 'web_subscription_guard' });
+        // Belt-and-suspenders: the UI should already hide the plan chooser until
+        // the summary settles, but never let a purchase through without it —
+        // buying blind risks a double web+store charge or a stacked Play sub.
+        if (summaryQueryState(summary) !== 'ready') {
+          setFeedback({
+            type: 'error',
+            text: 'We could not confirm your current subscription status. Pull down to refresh and try again.',
+          });
           return;
         }
-      }
 
-      setFeedback(null);
-      setBusyPackageId(item.id);
-      hapticLight();
-      setOperation(`Opening ${item.tier === 'PRO' ? 'Pro' : 'Supporter'} checkout…`);
-      trackPaywallEvent('purchase_started', { source, tier: item.tier, period: item.period, kind });
+        // Busy state goes up before the confirmation alert, not after it: while
+        // that alert is pending the CTAs must already be disabled.
+        setFeedback(null);
+        setBusyPackageId(item.id);
+        hapticLight();
+        setOperation(`Opening ${item.tier === 'PRO' ? 'Pro' : 'Supporter'} checkout…`);
 
-      try {
-        // Google Play replaces rather than stacks only when told what to replace.
-        const replaces =
-          kind === 'upgrade' || kind === 'downgrade' || kind === 'switch-period'
-            ? (activeStoreProductIds(summary.data)[0] ?? null)
-            : null;
-        const outcome = await purchaseStorePackage(item, replaces);
-
-        if (outcome === 'cancelled') {
-          trackPaywallEvent('purchase_cancelled', { source, tier: item.tier });
-          setFeedback({ type: 'info', text: 'Purchase canceled. Nothing was charged.' });
-        } else if (outcome === 'pending') {
-          setFeedback({
-            type: 'info',
-            text: 'Payment is pending. Access will update after the store confirms it.',
-          });
-        } else {
-          trackPaywallEvent('purchase_completed', { source, tier: item.tier, period: item.period });
-          await confirmWithServer('Subscription confirmed! Your Coach Watts access is up to date.');
+        // Stacking a store purchase on top of web billing charges twice.
+        if (hasActiveWebSubscription(summary.data)) {
+          const proceed = await confirmDoubleBilling();
+          if (!proceed) {
+            trackPaywallEvent('purchase_cancelled', { source, reason: 'web_subscription_guard' });
+            // Clear the busy state we put up for the alert, so declining does
+            // not leave every CTA stuck disabled.
+            setOperation(null);
+            setBusyPackageId(null);
+            return;
+          }
         }
-      } catch (error) {
-        trackPaywallEvent('purchase_failed', { source, tier: item.tier });
-        setFeedback({
-          type: 'error',
-          text: friendlyError(error, 'Purchase could not be completed'),
+
+        trackPaywallEvent('purchase_started', {
+          source,
+          tier: item.tier,
+          period: item.period,
+          kind,
         });
-      } finally {
-        setOperation(null);
-        setBusyPackageId(null);
-      }
+
+        try {
+          // Google Play replaces rather than stacks only when told what to replace.
+          const replaces =
+            kind === 'upgrade' || kind === 'downgrade' || kind === 'switch-period'
+              ? (activeStoreProductIds(summary.data)[0] ?? null)
+              : null;
+          const outcome = await purchaseStorePackage(item, replaces);
+
+          if (outcome === 'cancelled') {
+            trackPaywallEvent('purchase_cancelled', { source, tier: item.tier });
+            setFeedback({ type: 'info', text: 'Purchase canceled. Nothing was charged.' });
+          } else if (outcome === 'pending') {
+            setFeedback({
+              type: 'info',
+              text: 'Payment is pending. Access will update after the store confirms it.',
+            });
+          } else {
+            trackPaywallEvent('purchase_completed', {
+              source,
+              tier: item.tier,
+              period: item.period,
+            });
+            await confirmWithServer(
+              'Subscription confirmed! Your Coach Watts access is up to date.',
+            );
+          }
+        } catch (error) {
+          trackPaywallEvent('purchase_failed', { source, tier: item.tier });
+          setFeedback({
+            type: 'error',
+            text: friendlyError(error, 'Purchase could not be completed'),
+          });
+        } finally {
+          setOperation(null);
+          setBusyPackageId(null);
+        }
+      });
     },
-    [confirmWithServer, source, summary],
+    [confirmWithServer, lock, source, summary],
   );
 
   const restore = useCallback(async () => {

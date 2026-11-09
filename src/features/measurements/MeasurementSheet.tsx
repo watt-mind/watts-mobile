@@ -130,8 +130,16 @@ export function MeasurementSheet({ visible, onClose }: MeasurementSheetProps) {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={{ flex: 1 }}
       >
-        <Pressable className="flex-1 justify-end bg-black/60" onPress={onClose}>
+        {/* Backdrop is a sibling, not a parent: a Pressable ancestor of the ScrollView
+            swallows drags that start on card content on Android (CW-620). */}
+        <View className="flex-1 justify-end bg-black/60">
           <Pressable
+            className="flex-1"
+            onPress={onClose}
+            accessibilityRole="button"
+            accessibilityLabel="Dismiss"
+          />
+          <View
             className="rounded-t-3xl bg-surface px-6 pb-10 pt-4"
             style={{ maxHeight: '85%', minHeight: 0 }}
           >
@@ -325,8 +333,8 @@ export function MeasurementSheet({ visible, onClose }: MeasurementSheetProps) {
                 onPress={() => void onSave()}
               />
             </ScrollView>
-          </Pressable>
-        </Pressable>
+          </View>
+        </View>
       </KeyboardAvoidingView>
     </Modal>
   );

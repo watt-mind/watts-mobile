@@ -11,11 +11,18 @@ interface NutritionDetailSheetProps {
 export function NutritionDetailSheet({ visible, onClose }: NutritionDetailSheetProps) {
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <Pressable className="flex-1 justify-end bg-black/60" onPress={onClose}>
+      {/* Backdrop is a sibling, not a parent: a Pressable ancestor of the ScrollView
+          swallows drags that start on card content on Android (CW-620). */}
+      <View className="flex-1 justify-end bg-black/60">
         <Pressable
-          className="rounded-t-3xl bg-surface px-6 pb-10 pt-4"
-          style={{ maxHeight: '90%' }}
-        >
+          className="flex-1"
+          onPress={onClose}
+          accessibilityRole="button"
+          accessibilityLabel="Dismiss"
+        />
+        {/* 85% cap (not 90) keeps a tappable scrim band below the status bar, which
+            swallows taps in the top ~50dp of the edge-to-edge window (CW-622). */}
+        <View className="rounded-t-3xl bg-surface px-6 pb-10 pt-4" style={{ maxHeight: '85%' }}>
           {/* Sheet Handle */}
           <View className="mb-4 h-1 w-10 self-center rounded-full bg-border-strong" />
 
@@ -33,8 +40,8 @@ export function NutritionDetailSheet({ visible, onClose }: NutritionDetailSheetP
           <ScrollView keyboardShouldPersistTaps="handled">
             <NutritionSection entriesMode="full" />
           </ScrollView>
-        </Pressable>
-      </Pressable>
+        </View>
+      </View>
     </Modal>
   );
 }

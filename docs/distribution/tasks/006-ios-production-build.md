@@ -17,17 +17,17 @@ Produce a signed App Store IPA and get it into App Store Connect / TestFlight.
 ## Steps
 
 1. [x] Bump user-facing version if needed — **0.1.1** matches ASC.
-2. [x] Bump iOS **build number** — **4** (`app.json`); logged in [log.md](../log.md).
-3. [x] Confirm production `.env` (parked `.env.local` e2e flags) — see [005](./005-eas-credentials-and-secrets.md).
+2. [x] Bump iOS **build number** — **6** (`app.json`); logged in [log.md](../log.md).
+3. [x] Confirm production `.env`; no `.env.local` and no `EXPO_PUBLIC_E2E_*` keys — see [005](./005-eas-credentials-and-secrets.md).
 4. [x] `npx expo prebuild -p ios --clean`
-5. [x] Archive: `xcodebuild -workspace ios/CoachWatts.xcworkspace -scheme CoachWatts -configuration Release -destination generic/platform=iOS -archivePath dist/ios/CoachWatts-0.1.1-4.xcarchive archive DEVELOPMENT_TEAM=42K8S6866N`
-6. [x] Upload: `xcodebuild -exportArchive` with `dist/ios/ExportOptions-upload.plist` (`destination=upload`) — **Upload succeeded** 2026-08-09.
-7. [x] ASC processing complete — **0.1.1 (4)** **Ready to Submit** in TestFlight (internal **WM**).
+5. [x] Archive: `xcodebuild -workspace ios/CoachWatts.xcworkspace -scheme CoachWatts -configuration Release -destination generic/platform=iOS -archivePath dist/ios/CoachWatts-0.1.1-6.xcarchive archive DEVELOPMENT_TEAM=42K8S6866N`
+6. [x] Upload: `xcodebuild -exportArchive` with `dist/ios/ExportOptions-upload.plist` (`destination=upload`) — **Upload succeeded** 2026-08-28.
+7. [x] ASC processing complete — **0.1.1 (6)** is **Ready to Submit** and available to internal group **WM** (2026-08-28).
 8. [x] Log version + build in [log.md](../log.md).
 
 ## Verify after binary lands
 
-- [x] Cold start: Coach Watts splash (not Expo chevron) — [../../store-checklist.md](../../store-checklist.md) (release sim smoke 2026-08-09)
+- [ ] Cold start: Coach Watts splash (not Expo chevron) on exact TestFlight build 6 — [../../store-checklist.md](../../store-checklist.md)
 - [ ] Home screen icon branded (physical device / TestFlight install)
 
 ## Done when
