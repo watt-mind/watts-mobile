@@ -6156,8 +6156,8 @@ packages:
   undici-types@8.3.0:
     resolution: {integrity: sha512-j375ScV60dom+YkPFIfTLcOiPxkN/buHz5GobjLhixFuANaNs3C9l4GmrWqejgXWJ7BbJcFYpTEUkS1Ge8bpZQ==}
 
-  undici@6.28.0:
-    resolution: {integrity: sha512-LIY910g9TI13YS95lrMFrs8Rm/u/irgHeTWoKCoteeJ04CUJ92eEfj0rVn+7VKMPBpUPiUoBKfhNyLI23EE/KA==}
+  undici@6.29.1:
+    resolution: {integrity: sha512-EvRlUt/QqAEvXdQeRMYUfwOQsfzpDztykrG2owGEE/rBOBoYv9uF39ZzsNDh4lTFHhTr2XOZjKkYgueD12ZmGA==}
     engines: {node: '>=18.17'}
 
   unicode-canonical-property-names-ecmascript@2.0.1:
@@ -8461,7 +8461,7 @@ snapshots:
     dependencies:
       progress: 2.0.3
       proxy-from-env: 1.1.0
-      undici: 6.28.0
+      undici: 6.29.1
       which: 2.0.2
     optionalDependencies:
       '@sentry/cli-darwin': 3.8.2
@@ -12639,7 +12639,7 @@ snapshots:
       proxy-agent: 6.5.0(supports-color@8.1.1)
       semver: 7.7.3
       tinyglobby: 0.2.15
-      undici: 6.28.0
+      undici: 6.29.1
       url-join: 5.0.0
       wildcard-match: 5.1.4
       yargs-parser: 21.1.1
@@ -13256,7 +13256,7 @@ snapshots:
 
   undici-types@8.3.0: {}
 
-  undici@6.28.0: {}
+  undici@6.29.1: {}
 
   unicode-canonical-property-names-ecmascript@2.0.1: {}
 
