@@ -43,7 +43,7 @@
   "dependencies": {
     "@ai-sdk/react": "^4.0.40",
     "@expo/ui": "~57.0.7",
-    "@kingstinct/react-native-healthkit": "^14.0.2",
+    "@kingstinct/react-native-healthkit": "^16.2.0",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-community/netinfo": "12.0.1",
     "@sentry/react-native": "^8.34.0",
