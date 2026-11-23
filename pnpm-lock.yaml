@@ -43,8 +43,8 @@ importers:
         specifier: ^5.101.4
         version: 5.101.4(@tanstack/react-query@5.101.4(react@19.2.3))(react@19.2.3)
       ai:
-        specifier: ^7.0.37
-        version: 7.0.37(zod@4.4.3)
+        specifier: ^7.0.177
+        version: 7.0.177(zod@4.4.3)
       expo:
         specifier: ~57.0.8
         version: 57.0.8(@babel/core@7.29.7(supports-color@8.1.1))(@expo/metro-runtime@57.0.7)(expo-router@57.0.8)(expo-widgets@57.0.28)(react-dom@19.2.3(react@19.2.3))(react-native-web@0.21.2(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-native-worklets@0.10.0(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.86.0(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(react-native@0.86.0(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.86.0(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.2.17)(react@19.2.3)(supports-color@8.1.1))(react@19.2.3)(supports-color@8.1.1))(react-native@0.86.0(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.86.0(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.2.17)(react@19.2.3)(supports-color@8.1.1))(react@19.2.3)(supports-color@8.1.1)(typescript@6.0.3)
@@ -235,6 +235,12 @@ packages:
   '@adobe/css-tools@4.5.0':
     resolution: {integrity: sha512-6OzddxPio9UiWTCemp4N8cYLV2ZN1ncRnV1cVGtve7dhPOtRkleRyx32GQCYSwDYgaHU3USMm84tNsvKzRCa1Q==}
 
+  '@ai-sdk/gateway@4.0.150':
+    resolution: {integrity: sha512-39jDj4UIN2M5kI/wW0IVMsD1PpjmZHSMFUU/yZSQerE4mg0Oo9AKPOSwn6Vu0MJ31aK+Mi9rUiUgl88Q2lkorg==}
+    engines: {node: '>=22'}
+    peerDependencies:
+      zod: ^3.25.76 || ^4.1.8
+
   '@ai-sdk/gateway@4.0.28':
     resolution: {integrity: sha512-ee9TsNO3mkgHDWmTmJ8Fvltr6PFh52zhrV2+FaKJY3F3iu7kWZi5tCRJCR1HVhhlpj6lHniUb28nLQdPHkA/1Q==}
     engines: {node: '>=22'}
@@ -253,8 +259,18 @@ packages:
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
 
+  '@ai-sdk/provider-utils@5.0.82':
+    resolution: {integrity: sha512-9s3Le9LsTR0exy14H8SERw4uMgFhiP0yJVoLefzfQCnnptj71noYh1AoVEsjfJjmMH1y16+1OqBVTDpTpU6M3Q==}
+    engines: {node: '>=22'}
+    peerDependencies:
+      zod: ^3.25.76 || ^4.1.8
+
   '@ai-sdk/provider@4.0.3':
     resolution: {integrity: sha512-e0CpNWJUY7OxAFAnCZkw+ri9QOHWwTs1tXP42782KFGCU07qt8NiXCrCVowyCB5dP2r5/Uls+g2oPd8kOJn9dw==}
+    engines: {node: '>=22'}
+
+  '@ai-sdk/provider@4.0.39':
+    resolution: {integrity: sha512-jRvAhvW23+TeMGVCME2WGejP/TjzyDg7TplUep3t8HcEYnC2/8zqhCy9RRrjjVs1ljcygABZ8pQ21MbCRdF01w==}
     engines: {node: '>=22'}
 
   '@ai-sdk/react@4.0.40':
@@ -2334,6 +2350,12 @@ packages:
     resolution: {integrity: sha512-qPgevFvpaQoBaRJVKzr8R7h1WPvV3DtbgRIQlne4le66KBzXx5hNBwo/+NTw67LgkKBlhCzksrdautpUdlls0Q==}
     engines: {node: '>=18.18'}
     hasBin: true
+
+  ai@7.0.177:
+    resolution: {integrity: sha512-DQNKH2lL4h+5Rxe34AxTdxXtNu3EnsDHpxIE6p4ETsi+r7sM187nP6JKrbASoSNEbR355H3FCGlSP7mj+m6Pzw==}
+    engines: {node: '>=22'}
+    peerDependencies:
+      zod: ^3.25.76 || ^4.1.8
 
   ai@7.0.37:
     resolution: {integrity: sha512-stF+SEQJgKY3Qfe3FwNzqUrehHviOp2l7LemoI8YMOa0Zk5PxKsRNgUk3cHXz0RAue9RRyCAis2fz6LSCP6EKw==}
@@ -6551,6 +6573,13 @@ snapshots:
 
   '@adobe/css-tools@4.5.0': {}
 
+  '@ai-sdk/gateway@4.0.150(zod@4.4.3)':
+    dependencies:
+      '@ai-sdk/provider': 4.0.39
+      '@ai-sdk/provider-utils': 5.0.82(zod@4.4.3)
+      '@vercel/oidc': 3.2.0
+      zod: 4.4.3
+
   '@ai-sdk/gateway@4.0.28(zod@4.4.3)':
     dependencies:
       '@ai-sdk/provider': 4.0.3
@@ -6573,7 +6602,19 @@ snapshots:
       eventsource-parser: 3.1.0
       zod: 4.4.3
 
+  '@ai-sdk/provider-utils@5.0.82(zod@4.4.3)':
+    dependencies:
+      '@ai-sdk/provider': 4.0.39
+      '@standard-schema/spec': 1.1.0
+      '@workflow/serde': 4.1.0
+      eventsource-parser: 3.1.0
+      zod: 4.4.3
+
   '@ai-sdk/provider@4.0.3':
+    dependencies:
+      json-schema: 0.4.0
+
+  '@ai-sdk/provider@4.0.39':
     dependencies:
       json-schema: 0.4.0
 
@@ -8883,6 +8924,13 @@ snapshots:
   agent-base@7.1.4: {}
 
   agent-cli-detector@0.1.4: {}
+
+  ai@7.0.177(zod@4.4.3):
+    dependencies:
+      '@ai-sdk/gateway': 4.0.150(zod@4.4.3)
+      '@ai-sdk/provider': 4.0.39
+      '@ai-sdk/provider-utils': 5.0.82(zod@4.4.3)
+      zod: 4.4.3
 
   ai@7.0.37(zod@4.4.3):
     dependencies:
